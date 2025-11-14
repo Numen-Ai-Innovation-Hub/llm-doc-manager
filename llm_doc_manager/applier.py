@@ -227,21 +227,8 @@ class Applier:
             for i, docstring_line in enumerate(docstring_lines):
                 lines.insert(insert_at + i, docstring_line)
 
-        # Remove the markers (start and end)
-        # Search backwards for end marker (after the function)
-        end_marker_idx = None
-        end_marker_pattern = f'{marker_prefix}-end'
-        for i in range(len(lines) - 1, marker_line_idx, -1):
-            if end_marker_pattern in lines[i]:
-                end_marker_idx = i
-                break
-
-        # Remove markers (start and end)
-        if end_marker_idx is not None:
-            # Remove end marker first (to preserve indices)
-            del lines[end_marker_idx]
-            # Remove start marker
-            del lines[marker_line_idx]
+        # Remove the markers using shared method
+        self._remove_markers(lines, marker_line_idx, marker_prefix)
 
         return '\n'.join(lines)
 
@@ -303,6 +290,32 @@ class Applier:
 
         return '\n'.join(formatted_lines)
 
+    def _remove_markers(self, lines: List[str], marker_line_idx: int, marker_prefix: str) -> None:
+        """
+        Remove start and end markers from the lines.
+
+        Uses reverse search strategy (from end to start) which works for all marker types.
+
+        Args:
+            lines: File lines (modified in place)
+            marker_line_idx: Index of the start marker
+            marker_prefix: Marker prefix (@llm-doc, @llm-class, or @llm-comm)
+        """
+        # Search backwards for end marker (after the start marker)
+        end_marker_idx = None
+        end_marker_pattern = f'{marker_prefix}-end'
+
+        for i in range(len(lines) - 1, marker_line_idx, -1):
+            if end_marker_pattern in lines[i]:
+                end_marker_idx = i
+                break
+
+        # Remove markers (end first to preserve indices)
+        if end_marker_idx is not None:
+            del lines[end_marker_idx]
+        # Remove start marker
+        del lines[marker_line_idx]
+
     def _replace_comment(self, lines: List[str], line_number: int,
                         original_text: str, suggested_text: str) -> str:
         """
@@ -349,20 +362,8 @@ class Applier:
         # Insert comment above the code line
         lines.insert(code_line_idx, formatted_comment)
 
-        # Remove the markers (@llm-comm-start and @llm-comm-end)
-        # After insertion, marker_line_idx is still the start marker
-        # End marker should be after the code line
-        end_marker_idx = None
-        for i in range(code_line_idx + 1, min(len(lines), code_line_idx + 20)):
-            if '@llm-comm-end' in lines[i]:
-                end_marker_idx = i
-                break
-
-        # Remove markers (end first to preserve indices)
-        if end_marker_idx is not None:
-            del lines[end_marker_idx]
-        # Remove start marker
-        del lines[marker_line_idx]
+        # Remove the markers using shared method
+        self._remove_markers(lines, marker_line_idx, '@llm-comm')
 
         return '\n'.join(lines)
 
