@@ -1,0 +1,300 @@
+"""
+Applier for applying documentation suggestions to files.
+
+Handles applying LLM-generated documentation changes to source files with backup support.
+"""
+
+import shutil
+from datetime import datetime
+from pathlib import Path
+from typing import List, Optional, Dict
+from dataclasses import dataclass
+
+from .config import Config
+from .queue import DocTask, QueueManager
+
+
+@dataclass
+class Suggestion:
+    """Represents a documentation suggestion."""
+    task_id: int
+    file_path: str
+    line_number: int
+    original_text: str
+    suggested_text: str
+    task_type: str
+    applied: bool = False
+
+
+class Applier:
+    """Applies documentation suggestions to files."""
+
+    def __init__(self, config: Config, queue_manager: QueueManager):
+        """
+        Initialize Applier.
+
+        Args:
+            config: Configuration object
+            queue_manager: Queue manager for task information
+        """
+        self.config = config
+        self.queue_manager = queue_manager
+        self.backup_dir = Path(config.output.backup_dir)
+
+    def apply_suggestion(self, suggestion: Suggestion) -> bool:
+        """
+        Apply a single suggestion to a file.
+
+        Args:
+            suggestion: Suggestion to apply
+
+        Returns:
+            True if successful, False otherwise
+        """
+        try:
+            file_path = Path(suggestion.file_path)
+
+            # Create backup if enabled
+            if self.config.output.backup:
+                self._create_backup(file_path)
+
+            # Read file content
+            with open(file_path, 'r', encoding='utf-8') as f:
+                content = f.read()
+
+            # Apply the change
+            modified_content = self._apply_change(
+                content,
+                suggestion.line_number,
+                suggestion.original_text,
+                suggestion.suggested_text,
+                suggestion.task_type
+            )
+
+            # Write back to file
+            with open(file_path, 'w', encoding='utf-8') as f:
+                f.write(modified_content)
+
+            suggestion.applied = True
+            return True
+
+        except Exception as e:
+            print(f"Error applying suggestion: {e}")
+            return False
+
+    def _create_backup(self, file_path: Path):
+        """
+        Create backup of file before modification.
+
+        Args:
+            file_path: Path to file to backup
+        """
+        self.backup_dir.mkdir(parents=True, exist_ok=True)
+
+        # Create backup filename with timestamp
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        backup_name = f"{file_path.name}.{timestamp}.bak"
+        backup_path = self.backup_dir / backup_name
+
+        # Copy file
+        shutil.copy2(file_path, backup_path)
+
+    def _apply_change(self, content: str, line_number: int,
+                     original_text: str, suggested_text: str,
+                     task_type: str) -> str:
+        """
+        Apply change to file content.
+
+        Args:
+            content: Original file content
+            line_number: Line number where change occurs
+            original_text: Original text (for verification)
+            suggested_text: New text to insert
+            task_type: Type of task (determines how to apply)
+
+        Returns:
+            Modified content
+        """
+        lines = content.split('\n')
+
+        if task_type in ["generate_docstring", "validate_docstring"]:
+            # Replace or insert docstring
+            return self._replace_docstring(lines, line_number, original_text, suggested_text)
+
+        else:
+            # Unsupported task type
+            return content
+
+    def _replace_docstring(self, lines: List[str], line_number: int,
+                          original_text: str, suggested_text: str) -> str:
+        """
+        Replace or insert a docstring.
+
+        Args:
+            lines: File lines
+            line_number: Starting line number (where @llm-doc-start marker is)
+            original_text: Original docstring (if any)
+            suggested_text: New docstring
+
+        Returns:
+            Modified content
+        """
+        # Find the function/class definition
+        # line_number is 1-indexed and points to @llm-doc-start marker
+        # Function definition should be on the NEXT line after the marker
+        marker_line_idx = line_number - 1
+        func_line_idx = None
+
+        # Search FORWARD from marker to find the function definition
+        # (the marker is BEFORE the function, not after)
+        for i in range(marker_line_idx + 1, min(len(lines), marker_line_idx + 10)):
+            line = lines[i].strip()
+            if line.startswith('def ') or line.startswith('async def ') or line.startswith('class '):
+                func_line_idx = i
+                break
+
+        if func_line_idx is None:
+            # Fallback: assume function is right after marker
+            func_line_idx = marker_line_idx + 1
+
+        # Look for existing docstring after the function definition
+        docstring_start = None
+        docstring_end = None
+
+        # Start looking from the line after the function definition
+        search_start = func_line_idx + 1
+
+        for i in range(search_start, min(search_start + 10, len(lines))):
+            line = lines[i].strip()
+
+            # Skip empty lines
+            if not line:
+                continue
+
+            if line.startswith('"""') or line.startswith("'''"):
+                quote = '"""' if '"""' in line else "'''"
+                docstring_start = i
+
+                # Check if docstring ends on same line
+                if line.count(quote) >= 2:
+                    docstring_end = i
+                else:
+                    # Find end
+                    for j in range(i + 1, len(lines)):
+                        if quote in lines[j]:
+                            docstring_end = j
+                            break
+                break
+            else:
+                # If we hit non-docstring code, stop searching
+                break
+
+        # Get indentation from the function definition line
+        indent = ""
+        if func_line_idx < len(lines):
+            func_line_text = lines[func_line_idx]
+            for char in func_line_text:
+                if char in [' ', '\t']:
+                    indent += char
+                else:
+                    break
+            # Add one level of indentation for docstring
+            indent += "    "  # Standard 4 spaces
+
+        # Format new docstring
+        formatted_docstring = self._format_docstring(suggested_text, indent)
+
+        # Replace or insert
+        if docstring_start is not None and docstring_end is not None:
+            # Replace existing docstring
+            lines[docstring_start:docstring_end + 1] = formatted_docstring.split('\n')
+        else:
+            # Insert new docstring after function definition
+            insert_at = func_line_idx + 1
+            docstring_lines = formatted_docstring.split('\n')
+            for i, docstring_line in enumerate(docstring_lines):
+                lines.insert(insert_at + i, docstring_line)
+
+        return '\n'.join(lines)
+
+    def _format_docstring(self, docstring: str, indent: str) -> str:
+        """
+        Format docstring with proper indentation and quotes.
+
+        Args:
+            docstring: Raw docstring text
+            indent: Indentation string
+
+        Returns:
+            Formatted docstring
+        """
+        # Remove existing quotes if present
+        docstring = docstring.strip().strip('"""').strip("'''").strip()
+
+        # Split into lines
+        lines = docstring.split('\n')
+
+        # Format with quotes and indentation
+        formatted_lines = [f'{indent}"""']
+
+        for line in lines:
+            if line.strip():
+                formatted_lines.append(f'{indent}{line}')
+            else:
+                formatted_lines.append('')
+
+        formatted_lines.append(f'{indent}"""')
+
+        return '\n'.join(formatted_lines)
+
+    def rollback(self, file_path: str) -> bool:
+        """
+        Rollback to most recent backup of a file.
+
+        Args:
+            file_path: Path to file to rollback
+
+        Returns:
+            True if successful, False otherwise
+        """
+        try:
+            file_path = Path(file_path)
+            file_name = file_path.name
+
+            # Find most recent backup
+            backups = sorted(
+                self.backup_dir.glob(f"{file_name}.*.bak"),
+                key=lambda p: p.stat().st_mtime,
+                reverse=True
+            )
+
+            if not backups:
+                print(f"No backups found for {file_path}")
+                return False
+
+            most_recent = backups[0]
+
+            # Restore backup
+            shutil.copy2(most_recent, file_path)
+            print(f"✓ Restored from backup: {most_recent.name}")
+            return True
+
+        except Exception as e:
+            print(f"Error during rollback: {e}")
+            return False
+
+    def list_backups(self) -> List[Path]:
+        """
+        List all available backups.
+
+        Returns:
+            List of backup file paths
+        """
+        if not self.backup_dir.exists():
+            return []
+
+        return sorted(
+            self.backup_dir.glob("*.bak"),
+            key=lambda p: p.stat().st_mtime,
+            reverse=True
+        )
