@@ -225,39 +225,55 @@ class Applier:
         """
         Format docstring with proper indentation and quotes.
 
+        This method applies DETERMINISTIC formatting regardless of LLM output format:
+        1. Removes ALL existing indentation
+        2. Detects Google Style sections (Args:, Returns:, Raises:, Example:)
+        3. Applies consistent indentation:
+           - Section headers (Args:, Returns:, etc.): base indent
+           - Section content: base indent + 4 spaces
+
         Args:
             docstring: Raw docstring text
-            indent: Indentation string
+            indent: Base indentation string
 
         Returns:
-            Formatted docstring
+            Formatted docstring with consistent indentation
         """
         # Remove existing quotes if present
         docstring = docstring.strip().strip('"""').strip("'''").strip()
 
-        # Split into lines
-        lines = docstring.split('\n')
+        # Split into lines and strip ALL indentation
+        lines = [line.strip() for line in docstring.split('\n')]
 
-        # Detect minimum indentation (excluding empty lines)
-        min_indent = float('inf')
-        for line in lines:
-            if line.strip():
-                leading_spaces = len(line) - len(line.lstrip())
-                min_indent = min(min_indent, leading_spaces)
+        # Google Style section markers
+        section_markers = ['Args:', 'Arguments:', 'Returns:', 'Return:', 'Yields:',
+                          'Raises:', 'Raise:', 'Note:', 'Notes:', 'Example:',
+                          'Examples:', 'Attributes:', 'See Also:', 'Warning:',
+                          'Warnings:', 'Todo:']
 
-        if min_indent == float('inf'):
-            min_indent = 0
-
-        # Format with quotes and indentation
+        # Format with quotes and controlled indentation
         formatted_lines = [f'{indent}"""']
 
+        in_section = False
         for line in lines:
-            if line.strip():
-                # Remove the common indentation, then apply the correct base indent
-                relative_indent = len(line) - len(line.lstrip()) - min_indent
-                formatted_lines.append(f'{indent}{" " * relative_indent}{line.lstrip()}')
-            else:
+            if not line:
+                # Empty line
                 formatted_lines.append('')
+                continue
+
+            # Check if this is a section header
+            is_section_header = any(line.startswith(marker) for marker in section_markers)
+
+            if is_section_header:
+                # Section header: base indent only
+                formatted_lines.append(f'{indent}{line}')
+                in_section = True
+            elif in_section:
+                # Content inside a section: base indent + 4 spaces
+                formatted_lines.append(f'{indent}    {line}')
+            else:
+                # Summary or extended description: base indent only
+                formatted_lines.append(f'{indent}{line}')
 
         formatted_lines.append(f'{indent}"""')
 
