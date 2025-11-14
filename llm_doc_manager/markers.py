@@ -13,15 +13,26 @@ from enum import Enum
 
 class MarkerType(Enum):
     """Types of documentation markers."""
-    DOCSTRING = "docstring"  # Unified type - auto-detects generate vs validate
+    DOCSTRING = "docstring"  # Method/function docstrings (@llm-def)
+    CLASS_DOC = "class_doc"  # Class documentation (@llm-class)
+    COMMENT = "comment"      # Code comments (@llm-comm)
 
 
 class MarkerPatterns:
     """Delimiter-based marker patterns."""
 
-    # Delimiter markers for function documentation
-    DOC_START = r"^\s*#\s*@llm-doc-start\s*$"
-    DOC_END = r"^\s*#\s*@llm-doc-end\s*$"
+    # Delimiter markers for function/method documentation (renamed from @llm-doc)
+    # Backward compatibility: still accept @llm-doc
+    DEF_START = r"^\s*#\s*@llm-(?:def|doc)-start\s*$"
+    DEF_END = r"^\s*#\s*@llm-(?:def|doc)-end\s*$"
+
+    # Delimiter markers for class documentation
+    CLASS_START = r"^\s*#\s*@llm-class-start\s*$"
+    CLASS_END = r"^\s*#\s*@llm-class-end\s*$"
+
+    # Delimiter markers for code comments
+    COMM_START = r"^\s*#\s*@llm-comm-start\s*$"
+    COMM_END = r"^\s*#\s*@llm-comm-end\s*$"
 
 
 @dataclass
@@ -42,15 +53,30 @@ class MarkerDetector:
 
     def __init__(self):
         """Initialize marker detector."""
-        self.start_pattern = re.compile(MarkerPatterns.DOC_START)
-        self.end_pattern = re.compile(MarkerPatterns.DOC_END)
+        # Compile all marker patterns
+        self.patterns = {
+            MarkerType.DOCSTRING: {
+                'start': re.compile(MarkerPatterns.DEF_START),
+                'end': re.compile(MarkerPatterns.DEF_END)
+            },
+            MarkerType.CLASS_DOC: {
+                'start': re.compile(MarkerPatterns.CLASS_START),
+                'end': re.compile(MarkerPatterns.CLASS_END)
+            },
+            MarkerType.COMMENT: {
+                'start': re.compile(MarkerPatterns.COMM_START),
+                'end': re.compile(MarkerPatterns.COMM_END)
+            }
+        }
 
     def detect_blocks(self, content: str, file_path: str = "") -> List[DetectedBlock]:
         """
         Detect all documentation blocks in the given content.
 
-        A documentation block is defined by @llm-doc-start and @llm-doc-end markers.
-        The function code between these markers is extracted completely.
+        Supports three types of markers:
+        - @llm-def: Method/function docstrings
+        - @llm-class: Class documentation
+        - @llm-comm: Code comments
 
         Args:
             content: The file content to search
@@ -64,14 +90,21 @@ class MarkerDetector:
 
         i = 0
         while i < len(lines):
-            # Look for start marker
-            if self.start_pattern.match(lines[i]):
+            # Check which type of marker this is
+            marker_type = None
+            for mtype, patterns in self.patterns.items():
+                if patterns['start'].match(lines[i]):
+                    marker_type = mtype
+                    break
+
+            if marker_type:
                 start_line = i + 1  # 1-indexed
 
                 # Find corresponding end marker
                 end_line = None
+                end_pattern = self.patterns[marker_type]['end']
                 for j in range(i + 1, len(lines)):
-                    if self.end_pattern.match(lines[j]):
+                    if end_pattern.match(lines[j]):
                         end_line = j + 1  # 1-indexed
                         break
 
@@ -84,8 +117,13 @@ class MarkerDetector:
                 block_lines = lines[i + 1:end_line - 1]  # Exclude marker lines
                 full_code = '\n'.join(block_lines)
 
-                # Analyze the block
-                analysis = self._analyze_block(block_lines)
+                # Analyze the block based on marker type
+                if marker_type == MarkerType.DOCSTRING:
+                    analysis = self._analyze_block(block_lines)
+                elif marker_type == MarkerType.CLASS_DOC:
+                    analysis = self._analyze_class_block(block_lines)
+                else:  # MarkerType.COMMENT
+                    analysis = self._analyze_comment_block(block_lines)
 
                 blocks.append(DetectedBlock(
                     file_path=file_path,
@@ -94,8 +132,8 @@ class MarkerDetector:
                     full_code=full_code,
                     has_docstring=analysis['has_docstring'],
                     current_docstring=analysis['docstring'],
-                    function_name=analysis['function_name'],
-                    marker_type=MarkerType.DOCSTRING
+                    function_name=analysis.get('function_name'),
+                    marker_type=marker_type
                 ))
 
                 # Move past this block
@@ -216,6 +254,103 @@ class MarkerDetector:
 
         return False
 
+    def _analyze_class_block(self, block_lines: List[str]) -> Dict:
+        """
+        Analyze a class block to determine if it has a docstring.
+
+        Args:
+            block_lines: Lines of code in the block
+
+        Returns:
+            Dictionary with analysis results
+        """
+        result = {
+            'has_docstring': False,
+            'docstring': None,
+            'function_name': None  # For classes, this will be class name
+        }
+
+        # Find class definition
+        class_line_idx = None
+        for i, line in enumerate(block_lines):
+            stripped = line.strip()
+            if stripped.startswith('class '):
+                class_line_idx = i
+                # Extract class name
+                match = re.match(r'class\s+(\w+)', stripped)
+                if match:
+                    result['function_name'] = match.group(1)
+                break
+
+        if class_line_idx is None:
+            return result
+
+        # Look for docstring after class definition (same logic as functions)
+        docstring_start = None
+        docstring_end = None
+        quote_type = None
+
+        for i in range(class_line_idx + 1, len(block_lines)):
+            line = block_lines[i].strip()
+
+            if not line:
+                continue
+
+            if line.startswith('"""') or line.startswith("'''"):
+                quote_type = '"""' if '"""' in line else "'''"
+                docstring_start = i
+
+                if line.count(quote_type) >= 2:
+                    docstring_end = i
+                else:
+                    for j in range(i + 1, len(block_lines)):
+                        if quote_type in block_lines[j]:
+                            docstring_end = j
+                            break
+                break
+            else:
+                break
+
+        if docstring_start is not None and docstring_end is not None:
+            docstring_lines = block_lines[docstring_start:docstring_end + 1]
+            docstring_text = '\n'.join(docstring_lines)
+            docstring_text = docstring_text.strip().strip('"""').strip("'''").strip()
+
+            if docstring_text and not self._is_placeholder(docstring_text):
+                result['has_docstring'] = True
+                result['docstring'] = docstring_text
+
+        return result
+
+    def _analyze_comment_block(self, block_lines: List[str]) -> Dict:
+        """
+        Analyze a code comment block.
+
+        Args:
+            block_lines: Lines of code in the block
+
+        Returns:
+            Dictionary with analysis results
+        """
+        # For comments, there's no docstring - we'll generate comments
+        # Extract existing comments if any
+        existing_comments = []
+        for line in block_lines:
+            stripped = line.strip()
+            if stripped.startswith('#') and not stripped.startswith('#@llm'):
+                # Remove the # and add to existing comments
+                comment_text = stripped[1:].strip()
+                if comment_text:
+                    existing_comments.append(comment_text)
+
+        result = {
+            'has_docstring': bool(existing_comments),
+            'docstring': '\n'.join(existing_comments) if existing_comments else None,
+            'function_name': None
+        }
+
+        return result
+
     def detect_markers(self, content: str, file_path: str = "") -> List[Dict]:
         """
         Legacy method for backward compatibility with scanner.
@@ -233,16 +368,21 @@ class MarkerDetector:
         markers = []
 
         for block in blocks:
-            # Determine task type based on docstring presence
-            if block.has_docstring:
-                task_type = "validate_docstring"
-            else:
-                task_type = "generate_docstring"
+            # Determine task type based on marker type and docstring presence
+            if block.marker_type == MarkerType.COMMENT:
+                # Comment blocks: generate or validate comments
+                task_type = "validate_comment" if block.has_docstring else "generate_comment"
+            elif block.marker_type == MarkerType.CLASS_DOC:
+                # Class documentation: generate or validate class docs
+                task_type = "validate_class_doc" if block.has_docstring else "generate_class_doc"
+            else:  # MarkerType.DOCSTRING (methods/functions)
+                # Function/method docstrings: generate or validate
+                task_type = "validate_docstring" if block.has_docstring else "generate_docstring"
 
             markers.append({
                 'file_path': block.file_path,
                 'line_number': block.start_line,
-                'line_content': f"# @llm-doc-start (function: {block.function_name})",
+                'line_content': f"# Marker for {block.marker_type.value}: {block.function_name or 'N/A'}",
                 'marker_type': block.marker_type,
                 'priority': 10,
                 'task_type': task_type,

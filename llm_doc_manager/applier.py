@@ -219,6 +219,21 @@ class Applier:
             for i, docstring_line in enumerate(docstring_lines):
                 lines.insert(insert_at + i, docstring_line)
 
+        # Remove the markers (@llm-doc-start and @llm-doc-end)
+        # Search backwards for @llm-doc-end (after the function)
+        end_marker_idx = None
+        for i in range(len(lines) - 1, marker_line_idx, -1):
+            if '@llm-doc-end' in lines[i] or '@llm-def-end' in lines[i]:
+                end_marker_idx = i
+                break
+
+        # Remove markers (start and end)
+        if end_marker_idx is not None:
+            # Remove end marker first (to preserve indices)
+            del lines[end_marker_idx]
+            # Remove start marker
+            del lines[marker_line_idx]
+
         return '\n'.join(lines)
 
     def _format_docstring(self, docstring: str, indent: str) -> str:
