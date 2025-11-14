@@ -223,7 +223,7 @@ class Applier:
         # Search backwards for @llm-doc-end (after the function)
         end_marker_idx = None
         for i in range(len(lines) - 1, marker_line_idx, -1):
-            if '@llm-doc-end' in lines[i] or '@llm-def-end' in lines[i]:
+            if '@llm-doc-end' in lines[i]:
                 end_marker_idx = i
                 break
 

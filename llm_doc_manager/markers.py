@@ -13,7 +13,7 @@ from enum import Enum
 
 class MarkerType(Enum):
     """Types of documentation markers."""
-    DOCSTRING = "docstring"  # Method/function docstrings (@llm-def)
+    DOCSTRING = "docstring"  # Method/function docstrings (@llm-doc)
     CLASS_DOC = "class_doc"  # Class documentation (@llm-class)
     COMMENT = "comment"      # Code comments (@llm-comm)
 
@@ -21,10 +21,9 @@ class MarkerType(Enum):
 class MarkerPatterns:
     """Delimiter-based marker patterns."""
 
-    # Delimiter markers for function/method documentation (renamed from @llm-doc)
-    # Backward compatibility: still accept @llm-doc
-    DEF_START = r"^\s*#\s*@llm-(?:def|doc)-start\s*$"
-    DEF_END = r"^\s*#\s*@llm-(?:def|doc)-end\s*$"
+    # Delimiter markers for function/method documentation
+    DOC_START = r"^\s*#\s*@llm-doc-start\s*$"
+    DOC_END = r"^\s*#\s*@llm-doc-end\s*$"
 
     # Delimiter markers for class documentation
     CLASS_START = r"^\s*#\s*@llm-class-start\s*$"
@@ -56,8 +55,8 @@ class MarkerDetector:
         # Compile all marker patterns
         self.patterns = {
             MarkerType.DOCSTRING: {
-                'start': re.compile(MarkerPatterns.DEF_START),
-                'end': re.compile(MarkerPatterns.DEF_END)
+                'start': re.compile(MarkerPatterns.DOC_START),
+                'end': re.compile(MarkerPatterns.DOC_END)
             },
             MarkerType.CLASS_DOC: {
                 'start': re.compile(MarkerPatterns.CLASS_START),
