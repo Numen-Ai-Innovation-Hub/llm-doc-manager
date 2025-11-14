@@ -82,6 +82,10 @@ class Processor:
         template_files = {
             "docstring_generate": "docstring_generate.md",
             "docstring_validate": "docstring_validate.md",
+            "class_generate": "class_generate.md",
+            "class_validate": "class_validate.md",
+            "comment_generate": "comment_generate.md",
+            "comment_validate": "comment_validate.md",
         }
 
         for key, filename in template_files.items():
@@ -173,9 +177,25 @@ class Processor:
         """
         task_type = task.task_type
 
-        # Determine which template to use
-        if task_type == "validate_docstring":
-            template = self.templates.get("docstring_validate", "")
+        # Map task type to template key
+        template_map = {
+            "generate_docstring": "docstring_generate",
+            "validate_docstring": "docstring_validate",
+            "generate_class": "class_generate",
+            "validate_class": "class_validate",
+            "generate_comment": "comment_generate",
+            "validate_comment": "comment_validate",
+        }
+
+        template_key = template_map.get(task_type)
+        if not template_key:
+            # Fallback for unsupported task types
+            return f"Generate or validate documentation for:\n\n{task.context}"
+
+        template = self.templates.get(template_key, "")
+
+        # For validate tasks, extract current docstring/comment
+        if task_type.startswith("validate_"):
             current_docstring = self._extract_current_docstring(task.context)
             prompt = template.format(
                 file_path=task.file_path,
@@ -183,18 +203,13 @@ class Processor:
                 context=task.context,
                 current_docstring=current_docstring
             )
-
-        elif task_type == "generate_docstring":
-            template = self.templates.get("docstring_generate", "")
+        else:
+            # For generate tasks
             prompt = template.format(
                 file_path=task.file_path,
                 line_number=task.line_number,
                 context=task.context
             )
-
-        else:
-            # Fallback for unsupported task types
-            prompt = f"Generate or validate docstring for:\n\n{task.context}"
 
         return prompt
 
@@ -296,8 +311,8 @@ class Processor:
         Returns:
             Parsed suggestion
         """
-        # Try to parse as JSON first (for validation tasks)
-        if task.task_type == "validate_docstring":
+        # Try to parse as JSON first (for validation tasks and comment generation)
+        if task.task_type.startswith("validate_") or task.task_type in ["generate_comment"]:
             try:
                 # Clean response - remove markdown code blocks if present
                 cleaned = response.strip()
@@ -314,11 +329,20 @@ class Processor:
 
                 # Parse JSON
                 parsed = json.loads(cleaned)
-                if isinstance(parsed, dict) and "improved_docstring" in parsed:
+
+                # Extract the appropriate field based on task type
+                if task.task_type == "validate_docstring" and "improved_docstring" in parsed:
                     return parsed["improved_docstring"]
+                elif task.task_type == "validate_class" and "improved_docstring" in parsed:
+                    return parsed["improved_docstring"]
+                elif task.task_type in ["validate_comment", "generate_comment"] and "comment" in parsed:
+                    return parsed["comment"]
+                elif task.task_type == "validate_comment" and "improved_comment" in parsed:
+                    return parsed["improved_comment"]
+
             except (json.JSONDecodeError, KeyError, ValueError):
                 # If parsing fails, return full response
                 pass
 
-        # For generate tasks or if JSON parsing fails, return as-is
+        # For generate tasks (docstring/class) or if JSON parsing fails, return as-is
         return response.strip()

@@ -123,34 +123,42 @@ class Applier:
 
         if task_type in ["generate_docstring", "validate_docstring"]:
             # Replace or insert docstring
-            return self._replace_docstring(lines, line_number, original_text, suggested_text)
+            return self._replace_docstring(lines, line_number, original_text, suggested_text, '@llm-doc')
+
+        elif task_type in ["generate_class", "validate_class"]:
+            # Replace or insert class docstring
+            return self._replace_docstring(lines, line_number, original_text, suggested_text, '@llm-class')
+
+        elif task_type in ["generate_comment", "validate_comment"]:
+            # Replace or insert inline comment
+            return self._replace_comment(lines, line_number, original_text, suggested_text)
 
         else:
             # Unsupported task type
             return content
 
     def _replace_docstring(self, lines: List[str], line_number: int,
-                          original_text: str, suggested_text: str) -> str:
+                          original_text: str, suggested_text: str, marker_prefix: str) -> str:
         """
         Replace or insert a docstring.
 
         Args:
             lines: File lines
-            line_number: Starting line number (where @llm-doc-start marker is)
+            line_number: Starting line number (where marker start is)
             original_text: Original docstring (if any)
             suggested_text: New docstring
+            marker_prefix: Marker prefix (@llm-doc or @llm-class)
 
         Returns:
             Modified content
         """
         # Find the function/class definition
-        # line_number is 1-indexed and points to @llm-doc-start marker
-        # Function definition should be on the NEXT line after the marker
+        # line_number is 1-indexed and points to marker start
+        # Definition should be on the NEXT line after the marker
         marker_line_idx = line_number - 1
         func_line_idx = None
 
-        # Search FORWARD from marker to find the function definition
-        # (the marker is BEFORE the function, not after)
+        # Search FORWARD from marker to find the function/class definition
         for i in range(marker_line_idx + 1, min(len(lines), marker_line_idx + 10)):
             line = lines[i].strip()
             if line.startswith('def ') or line.startswith('async def ') or line.startswith('class '):
@@ -219,11 +227,12 @@ class Applier:
             for i, docstring_line in enumerate(docstring_lines):
                 lines.insert(insert_at + i, docstring_line)
 
-        # Remove the markers (@llm-doc-start and @llm-doc-end)
-        # Search backwards for @llm-doc-end (after the function)
+        # Remove the markers (start and end)
+        # Search backwards for end marker (after the function)
         end_marker_idx = None
+        end_marker_pattern = f'{marker_prefix}-end'
         for i in range(len(lines) - 1, marker_line_idx, -1):
-            if '@llm-doc-end' in lines[i]:
+            if end_marker_pattern in lines[i]:
                 end_marker_idx = i
                 break
 
@@ -293,6 +302,69 @@ class Applier:
         formatted_lines.append(f'{indent}"""')
 
         return '\n'.join(formatted_lines)
+
+    def _replace_comment(self, lines: List[str], line_number: int,
+                        original_text: str, suggested_text: str) -> str:
+        """
+        Replace or insert an inline comment.
+
+        Args:
+            lines: File lines
+            line_number: Starting line number (where @llm-comm-start marker is)
+            original_text: Original comment (if any)
+            suggested_text: New comment text
+
+        Returns:
+            Modified content
+        """
+        # line_number is 1-indexed and points to @llm-comm-start marker
+        marker_line_idx = line_number - 1
+
+        # Find the code line (should be right after the marker)
+        code_line_idx = None
+        for i in range(marker_line_idx + 1, min(len(lines), marker_line_idx + 10)):
+            line = lines[i].strip()
+            # Skip empty lines and end marker
+            if line and not line.startswith('#'):
+                code_line_idx = i
+                break
+
+        if code_line_idx is None:
+            # Fallback: assume code is right after marker
+            code_line_idx = marker_line_idx + 1
+
+        # Get indentation from the code line
+        indent = ""
+        if code_line_idx < len(lines):
+            code_line_text = lines[code_line_idx]
+            for char in code_line_text:
+                if char in [' ', '\t']:
+                    indent += char
+                else:
+                    break
+
+        # Format comment
+        formatted_comment = f"{indent}# {suggested_text.strip()}"
+
+        # Insert comment above the code line
+        lines.insert(code_line_idx, formatted_comment)
+
+        # Remove the markers (@llm-comm-start and @llm-comm-end)
+        # After insertion, marker_line_idx is still the start marker
+        # End marker should be after the code line
+        end_marker_idx = None
+        for i in range(code_line_idx + 1, min(len(lines), code_line_idx + 20)):
+            if '@llm-comm-end' in lines[i]:
+                end_marker_idx = i
+                break
+
+        # Remove markers (end first to preserve indices)
+        if end_marker_idx is not None:
+            del lines[end_marker_idx]
+        # Remove start marker
+        del lines[marker_line_idx]
+
+        return '\n'.join(lines)
 
     def rollback(self, file_path: str) -> bool:
         """

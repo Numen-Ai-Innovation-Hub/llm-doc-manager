@@ -73,7 +73,7 @@ class MarkerDetector:
         Detect all documentation blocks in the given content.
 
         Supports three types of markers:
-        - @llm-def: Method/function docstrings
+        - @llm-doc: Method/function docstrings
         - @llm-class: Class documentation
         - @llm-comm: Code comments
 
@@ -176,51 +176,11 @@ class MarkerDetector:
 
         result['function_line_idx'] = func_line_idx
 
-        # Look for docstring after function definition
-        docstring_start = None
-        docstring_end = None
-        quote_type = None
-
-        # Start from line after function definition
-        for i in range(func_line_idx + 1, len(block_lines)):
-            line = block_lines[i].strip()
-
-            # Skip empty lines
-            if not line:
-                continue
-
-            # Check for docstring start
-            if line.startswith('"""') or line.startswith("'''"):
-                quote_type = '"""' if '"""' in line else "'''"
-                docstring_start = i
-
-                # Single-line docstring?
-                if line.count(quote_type) >= 2:
-                    docstring_end = i
-                else:
-                    # Multi-line - find end
-                    for j in range(i + 1, len(block_lines)):
-                        if quote_type in block_lines[j]:
-                            docstring_end = j
-                            break
-                break
-            else:
-                # Hit code before docstring - no docstring exists
-                break
-
-        # Extract docstring if found
-        if docstring_start is not None and docstring_end is not None:
-            docstring_lines = block_lines[docstring_start:docstring_end + 1]
-            docstring_text = '\n'.join(docstring_lines)
-
-            # Clean up the docstring
-            docstring_text = docstring_text.strip()
-            docstring_text = docstring_text.strip('"""').strip("'''").strip()
-
-            # Check if it's a real docstring or placeholder
-            if docstring_text and not self._is_placeholder(docstring_text):
-                result['has_docstring'] = True
-                result['docstring'] = docstring_text
+        # Extract docstring using shared method
+        docstring = self._extract_docstring(block_lines, func_line_idx)
+        if docstring:
+            result['has_docstring'] = True
+            result['docstring'] = docstring
 
         return result
 
@@ -253,43 +213,22 @@ class MarkerDetector:
 
         return False
 
-    def _analyze_class_block(self, block_lines: List[str]) -> Dict:
+    def _extract_docstring(self, block_lines: List[str], def_line_idx: int) -> Optional[str]:
         """
-        Analyze a class block to determine if it has a docstring.
+        Extract docstring from block after a definition line.
 
         Args:
             block_lines: Lines of code in the block
+            def_line_idx: Index of the definition line (function/class)
 
         Returns:
-            Dictionary with analysis results
+            Docstring text if found and valid, None otherwise
         """
-        result = {
-            'has_docstring': False,
-            'docstring': None,
-            'function_name': None  # For classes, this will be class name
-        }
-
-        # Find class definition
-        class_line_idx = None
-        for i, line in enumerate(block_lines):
-            stripped = line.strip()
-            if stripped.startswith('class '):
-                class_line_idx = i
-                # Extract class name
-                match = re.match(r'class\s+(\w+)', stripped)
-                if match:
-                    result['function_name'] = match.group(1)
-                break
-
-        if class_line_idx is None:
-            return result
-
-        # Look for docstring after class definition (same logic as functions)
         docstring_start = None
         docstring_end = None
         quote_type = None
 
-        for i in range(class_line_idx + 1, len(block_lines)):
+        for i in range(def_line_idx + 1, len(block_lines)):
             line = block_lines[i].strip()
 
             if not line:
@@ -316,8 +255,46 @@ class MarkerDetector:
             docstring_text = docstring_text.strip().strip('"""').strip("'''").strip()
 
             if docstring_text and not self._is_placeholder(docstring_text):
-                result['has_docstring'] = True
-                result['docstring'] = docstring_text
+                return docstring_text
+
+        return None
+
+    def _analyze_class_block(self, block_lines: List[str]) -> Dict:
+        """
+        Analyze a class block to determine if it has a docstring.
+
+        Args:
+            block_lines: Lines of code in the block
+
+        Returns:
+            Dictionary with analysis results
+        """
+        result = {
+            'has_docstring': False,
+            'docstring': None,
+            'function_name': None
+        }
+
+        # Find class definition
+        def_line_idx = None
+        for i, line in enumerate(block_lines):
+            stripped = line.strip()
+            if stripped.startswith('class '):
+                def_line_idx = i
+                # Extract class name
+                match = re.match(r'class\s+(\w+)', stripped)
+                if match:
+                    result['function_name'] = match.group(1)
+                break
+
+        if def_line_idx is None:
+            return result
+
+        # Extract docstring using shared method
+        docstring = self._extract_docstring(block_lines, def_line_idx)
+        if docstring:
+            result['has_docstring'] = True
+            result['docstring'] = docstring
 
         return result
 
@@ -373,7 +350,7 @@ class MarkerDetector:
                 task_type = "validate_comment" if block.has_docstring else "generate_comment"
             elif block.marker_type == MarkerType.CLASS_DOC:
                 # Class documentation: generate or validate class docs
-                task_type = "validate_class_doc" if block.has_docstring else "generate_class_doc"
+                task_type = "validate_class" if block.has_docstring else "generate_class"
             else:  # MarkerType.DOCSTRING (methods/functions)
                 # Function/method docstrings: generate or validate
                 task_type = "validate_docstring" if block.has_docstring else "generate_docstring"
