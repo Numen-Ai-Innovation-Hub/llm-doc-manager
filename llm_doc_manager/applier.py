@@ -40,6 +40,7 @@ class Applier:
         self.config = config
         self.queue_manager = queue_manager
         self.backup_dir = Path(config.output.backup_dir)
+        self.backed_up_files = set()  # Track files that have been backed up
 
     def apply_suggestion(self, suggestion: Suggestion) -> bool:
         """
@@ -54,9 +55,12 @@ class Applier:
         try:
             file_path = Path(suggestion.file_path)
 
-            # Create backup if enabled
+            # Create backup if enabled (only once per file)
             if self.config.output.backup:
-                self._create_backup(file_path)
+                file_key = str(file_path.resolve())
+                if file_key not in self.backed_up_files:
+                    self._create_backup(file_path)
+                    self.backed_up_files.add(file_key)
 
             # Read file content
             with open(file_path, 'r', encoding='utf-8') as f:
@@ -234,12 +238,24 @@ class Applier:
         # Split into lines
         lines = docstring.split('\n')
 
+        # Detect minimum indentation (excluding empty lines)
+        min_indent = float('inf')
+        for line in lines:
+            if line.strip():
+                leading_spaces = len(line) - len(line.lstrip())
+                min_indent = min(min_indent, leading_spaces)
+
+        if min_indent == float('inf'):
+            min_indent = 0
+
         # Format with quotes and indentation
         formatted_lines = [f'{indent}"""']
 
         for line in lines:
             if line.strip():
-                formatted_lines.append(f'{indent}{line}')
+                # Remove the common indentation, then apply the correct base indent
+                relative_indent = len(line) - len(line.lstrip()) - min_indent
+                formatted_lines.append(f'{indent}{" " * relative_indent}{line.lstrip()}')
             else:
                 formatted_lines.append('')
 
