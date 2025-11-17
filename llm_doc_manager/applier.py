@@ -14,6 +14,9 @@ from .config import Config
 from .queue import DocTask, QueueManager
 from .markers import MarkerPatterns
 from .docstring_utils import find_docstring_location
+from .logging_config import get_logger
+
+logger = get_logger(__name__)
 
 
 @dataclass

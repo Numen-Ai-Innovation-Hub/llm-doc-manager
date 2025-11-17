@@ -6,6 +6,7 @@ Provides interactive commands for scanning, processing, and applying documentati
 
 import click
 import sys
+import traceback
 from pathlib import Path
 from typing import Optional
 
@@ -162,7 +163,6 @@ def process(limit):
 
     except Exception as e:
         click.echo(f"❌ Error: {e}", err=True)
-        import traceback
         traceback.print_exc()
         sys.exit(1)
 
@@ -350,7 +350,6 @@ def remove_markers(paths, dry_run):
             paths = config.scanning.paths
 
         # Collect all Python files
-        from pathlib import Path
         files_to_clean = []
         for path_str in paths:
             path = Path(path_str)

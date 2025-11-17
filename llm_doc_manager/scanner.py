@@ -6,6 +6,7 @@ needs to be validated, generated, or reviewed.
 """
 
 import os
+from fnmatch import fnmatch
 from pathlib import Path
 from typing import List, Optional, Set
 from dataclasses import dataclass
@@ -14,6 +15,9 @@ from .markers import MarkerDetector
 from .queue import DocTask, QueueManager
 from .config import Config
 from .validator import MarkerValidator, ValidationIssue, ValidationLevel
+from .logging_config import get_logger
+
+logger = get_logger(__name__)
 
 
 @dataclass
@@ -63,6 +67,8 @@ class Scanner:
         result = ScanResult()
         files_to_scan = self._collect_files(paths)
 
+        logger.info(f"Scanning {len(files_to_scan)} file(s) for markers")
+
         for file_path in files_to_scan:
             try:
                 # Read file content
@@ -76,6 +82,7 @@ class Scanner:
                 # Check if there are any errors
                 if self.validator.has_errors(issues):
                     # Don't process this file - has validation errors
+                    logger.warning(f"Skipping {file_path} due to validation errors")
                     result.files_scanned += 1
                     continue
 
@@ -86,7 +93,9 @@ class Scanner:
                     result.tasks_created += 1
                 result.files_scanned += 1
             except Exception as e:
-                result.errors.append(f"Error scanning {file_path}: {str(e)}")
+                error_msg = f"Error scanning {file_path}: {str(e)}"
+                logger.error(error_msg)
+                result.errors.append(error_msg)
 
         return result
 
@@ -183,7 +192,6 @@ class Scanner:
         Returns:
             True if path should be excluded
         """
-        from fnmatch import fnmatch
         for pattern in exclude_patterns:
             if fnmatch(path, pattern) or pattern in path:
                 return True

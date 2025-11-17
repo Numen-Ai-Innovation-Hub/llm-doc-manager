@@ -12,6 +12,9 @@ from dataclasses import dataclass
 from .config import Config, ConfigManager
 from .queue import DocTask, QueueManager, TaskStatus
 from .docstring_utils import extract_docstring
+from .logging_config import get_logger
+
+logger = get_logger(__name__)
 
 
 @dataclass
