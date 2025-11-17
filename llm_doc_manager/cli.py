@@ -14,6 +14,7 @@ from .queue import QueueManager, TaskStatus
 from .scanner import Scanner
 from .processor import Processor, ProcessResult
 from .applier import Applier, Suggestion
+from .validator import MarkerValidator, ValidationLevel
 
 
 @click.group()
@@ -60,15 +61,39 @@ def scan(path):
         click.echo("🔍 Scanning project for documentation markers...")
         result = scanner.scan()
 
+        # Display validation issues first (if any)
+        if result.validation_issues:
+            errors = [i for i in result.validation_issues if i.level == ValidationLevel.ERROR]
+            warnings = [i for i in result.validation_issues if i.level == ValidationLevel.WARNING]
+
+            if errors:
+                click.echo(f"\n❌ Validation Errors ({len(errors)}):")
+                for issue in errors:
+                    click.echo(f"  {issue}")
+                click.echo("\n⚠️  Fix these errors before processing. Tasks were NOT created for files with errors.")
+
+            if warnings:
+                click.echo(f"\n⚠️  Validation Warnings ({len(warnings)}):")
+                for issue in warnings:
+                    click.echo(f"  {issue}")
+                click.echo("\n💡 Warnings don't block processing, but should be reviewed.")
+
         # Display results
         click.echo(f"\n✓ Scan complete!")
         click.echo(f"  Files scanned: {result.files_scanned}")
         click.echo(f"  Tasks created: {result.tasks_created}")
 
         if result.errors:
-            click.echo(f"\n⚠ Errors encountered: {len(result.errors)}")
+            click.echo(f"\n⚠ Scan errors: {len(result.errors)}")
             for error in result.errors[:5]:  # Show first 5 errors
                 click.echo(f"  - {error}")
+
+        # Check if scan was blocked by validation errors
+        validation_errors = [i for i in result.validation_issues if i.level == ValidationLevel.ERROR]
+        if validation_errors and result.tasks_created == 0:
+            click.echo("\n❌ No tasks created due to validation errors.")
+            click.echo("Fix the errors above and scan again.")
+            sys.exit(1)
 
         if result.tasks_created > 0:
             click.echo(f"\nNext: Run 'llm-doc-manager process' to generate suggestions")

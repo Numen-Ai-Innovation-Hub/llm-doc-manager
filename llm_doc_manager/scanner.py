@@ -13,6 +13,7 @@ from dataclasses import dataclass
 from .markers import MarkerDetector, MarkerType
 from .queue import DocTask, QueueManager
 from .config import Config
+from .validator import MarkerValidator, ValidationIssue, ValidationLevel
 
 
 @dataclass
@@ -21,10 +22,13 @@ class ScanResult:
     files_scanned: int = 0
     tasks_created: int = 0
     errors: List[str] = None
+    validation_issues: List[ValidationIssue] = None
 
     def __post_init__(self):
         if self.errors is None:
             self.errors = []
+        if self.validation_issues is None:
+            self.validation_issues = []
 
 
 class Scanner:
@@ -41,6 +45,7 @@ class Scanner:
         self.config = config
         self.queue_manager = queue_manager
         self.marker_detector = MarkerDetector()
+        self.validator = MarkerValidator()
 
     def scan(self, paths: Optional[List[str]] = None) -> ScanResult:
         """
@@ -60,7 +65,22 @@ class Scanner:
 
         for file_path in files_to_scan:
             try:
-                tasks = self._scan_file(file_path)
+                # Read file content
+                with open(file_path, 'r', encoding='utf-8') as f:
+                    content = f.read()
+
+                # Validate markers first
+                issues = self.validator.validate_file(content, str(file_path))
+                result.validation_issues.extend(issues)
+
+                # Check if there are any errors
+                if self.validator.has_errors(issues):
+                    # Don't process this file - has validation errors
+                    result.files_scanned += 1
+                    continue
+
+                # If only warnings, proceed but track them
+                tasks = self._scan_file(file_path, content)
                 for task in tasks:
                     self.queue_manager.add_task(task)
                     result.tasks_created += 1
@@ -169,23 +189,25 @@ class Scanner:
                 return True
         return False
 
-    def _scan_file(self, file_path: Path) -> List[DocTask]:
+    def _scan_file(self, file_path: Path, content: str = None) -> List[DocTask]:
         """
         Scan a single file for markers.
 
         Args:
             file_path: Path to file
+            content: Optional pre-read content (for efficiency)
 
         Returns:
             List of DocTasks found in the file
         """
-        try:
-            with open(file_path, 'r', encoding='utf-8') as f:
-                content = f.read()
-        except UnicodeDecodeError:
-            # Try with different encoding
-            with open(file_path, 'r', encoding='latin-1') as f:
-                content = f.read()
+        if content is None:
+            try:
+                with open(file_path, 'r', encoding='utf-8') as f:
+                    content = f.read()
+            except UnicodeDecodeError:
+                # Try with different encoding
+                with open(file_path, 'r', encoding='latin-1') as f:
+                    content = f.read()
 
         # Detect markers
         markers = self.marker_detector.detect_markers(content, str(file_path))
