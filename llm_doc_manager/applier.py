@@ -2,6 +2,21 @@
 Applier for applying documentation suggestions to files.
 
 Handles applying LLM-generated documentation changes to source files with backup support.
+
+Line Number Convention:
+    This module follows a strict convention for line numbering to prevent off-by-one errors:
+
+    - EXTERNAL (1-indexed): Line numbers as shown to users, stored in DB, and displayed in editors
+      Example: Line 1 is the first line of the file
+
+    - INTERNAL (0-indexed): Array/list indices used for accessing lines in memory
+      Example: lines[0] is the first line of the file
+
+    - Conversion: Always convert at API boundaries
+      marker_line_idx = line_number - 1  # Convert EXTERNAL to INTERNAL
+
+    All functions receiving line_number parameter expect EXTERNAL (1-indexed) values.
+    All lines arrays use INTERNAL (0-indexed) access.
 """
 
 import shutil
@@ -156,7 +171,17 @@ class Applier:
 
         Returns:
             Modified content
+
+        Raises:
+            ValueError: If line_number is outside valid range
         """
+        # Validate EXTERNAL line number (1-indexed)
+        if not (1 <= line_number <= len(lines)):
+            raise ValueError(
+                f"Invalid line number {line_number} for marker. "
+                f"File has {len(lines)} lines (valid range: 1-{len(lines)})"
+            )
+
         # Convert EXTERNAL (1-indexed) to INTERNAL (0-indexed)
         # line_number points to marker start (e.g., line 10 in editor = index 9)
         # Definition should be on the NEXT line after the marker
@@ -348,7 +373,17 @@ class Applier:
 
         Returns:
             Modified content
+
+        Raises:
+            ValueError: If line_number is outside valid range
         """
+        # Validate EXTERNAL line number (1-indexed)
+        if not (1 <= line_number <= len(lines)):
+            raise ValueError(
+                f"Invalid line number {line_number} for comment marker. "
+                f"File has {len(lines)} lines (valid range: 1-{len(lines)})"
+            )
+
         # Convert EXTERNAL (1-indexed) to INTERNAL (0-indexed)
         marker_line_idx = line_number - 1  # INTERNAL: Convert to 0-indexed
 
@@ -409,14 +444,14 @@ class Applier:
             )
 
             if not backups:
-                print(f"No backups found for {file_path}")
+                logger.warning(f"No backups found for {file_path}")
                 return False
 
             most_recent = backups[0]
 
             # Restore backup
             shutil.copy2(most_recent, file_path)
-            print(f"✓ Restored from backup: {most_recent.name}")
+            logger.info(f"Restored from backup: {most_recent.name}")
             return True
 
         except Exception as e:

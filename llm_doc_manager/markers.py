@@ -3,6 +3,21 @@ Marker definitions and detection logic.
 
 This module defines delimiter-based markers for function documentation.
 Uses @llm-doc-start and @llm-doc-end to mark functions for documentation.
+
+Line Number Convention:
+    This module follows a strict convention for line numbering to prevent off-by-one errors:
+
+    - EXTERNAL (1-indexed): Line numbers as shown to users, stored in DB, and displayed in editors
+      Example: Line 1 is the first line of the file
+
+    - INTERNAL (0-indexed): Array/list indices used for accessing lines in memory
+      Example: lines[0] is the first line of the file
+
+    - Conversion: Always convert when creating external-facing data structures
+      start_line = i + 1  # Convert INTERNAL (array index) to EXTERNAL (user-facing)
+
+    DetectedBlock and marker dictionaries use EXTERNAL (1-indexed) line numbers.
+    Internal processing on lines arrays uses INTERNAL (0-indexed) access.
 """
 
 import re
@@ -11,6 +26,7 @@ from typing import Dict, List, Optional
 from enum import Enum
 
 from .docstring_utils import find_docstring_location
+from .queue import TaskPriority
 
 
 class MarkerType(Enum):
@@ -376,12 +392,20 @@ class MarkerDetector:
                 # Function/method docstrings: generate or validate
                 task_type = "validate_docstring" if block.has_docstring else "generate_docstring"
 
+            # Determine priority based on marker type and presence of documentation
+            if block.has_docstring:
+                # Validation tasks have medium priority
+                priority = TaskPriority.MEDIUM.value
+            else:
+                # Missing documentation is high priority
+                priority = TaskPriority.HIGH.value
+
             markers.append({
                 'file_path': block.file_path,
                 'line_number': block.start_line,
                 'line_content': f"# Marker for {block.marker_type.value}: {block.function_name or 'N/A'}",
                 'marker_type': block.marker_type,
-                'priority': 10,
+                'priority': priority,
                 'task_type': task_type,
                 'full_code': block.full_code,
                 'current_docstring': block.current_docstring,

@@ -258,7 +258,6 @@ class Scanner:
             task_type=task_type,
             marker_text=marker.get('match_text', marker['line_content']),
             context=context,
-            parameters=None,  # No parameters needed with new approach
             priority=priority
         )
 

@@ -148,14 +148,14 @@ class ConfigManager:
             True if config was created/updated, False otherwise
         """
         if self.config_dir.exists() and not overwrite:
-            print(f"Configuration already exists at: {self.config_file}")
+            logger.info(f"Configuration already exists at: {self.config_file}")
             return False
 
         # If overwrite is True and directory exists, delete it completely
         if overwrite and self.config_dir.exists():
             import shutil
             shutil.rmtree(self.config_dir)
-            print(f"✓ Removed existing configuration directory")
+            logger.info(f"Removed existing configuration directory")
 
         # Create fresh directory structure
         self.config_dir.mkdir(parents=True, exist_ok=True)
@@ -163,7 +163,7 @@ class ConfigManager:
         default_config = Config()
         self.save(default_config)
 
-        print(f"✓ Configuration initialized at: {self.config_file}")
+        logger.info(f"Configuration initialized at: {self.config_file}")
         return True
 
     def _resolve_env_vars(self, data: Any) -> Any:
@@ -243,7 +243,7 @@ class ConfigManager:
             True if cleanup was successful, False otherwise
         """
         if not self.config_dir.exists():
-            print(f"No configuration found at: {self.config_dir}")
+            logger.info(f"No configuration found at: {self.config_dir}")
             return False
 
         try:

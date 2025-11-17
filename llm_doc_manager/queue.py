@@ -2,9 +2,12 @@
 Task queue management for documentation tasks.
 
 Manages the queue of documentation tasks that need to be processed by the LLM.
+
+Line Number Convention:
+    DocTask.line_number is EXTERNAL (1-indexed) - the line number as shown in editors.
+    This matches user expectations and editor displays (first line is line 1, not line 0).
 """
 
-import json
 import sqlite3
 from datetime import datetime
 from pathlib import Path
@@ -23,11 +26,17 @@ class TaskStatus(Enum):
 
 
 class TaskPriority(Enum):
-    """Priority levels for tasks."""
-    LOW = 1
+    """Priority levels for tasks.
+
+    Used to determine processing order in the queue.
+    Tasks are processed in descending priority order (HIGH before MEDIUM).
+
+    Values:
+        MEDIUM (5): Validation tasks - improving existing documentation
+        HIGH (10): Generation tasks - adding missing documentation
+    """
     MEDIUM = 5
     HIGH = 10
-    CRITICAL = 15
 
 
 @dataclass
@@ -39,7 +48,6 @@ class DocTask:
     task_type: str = ""  # validate_docstring, generate_docstring
     marker_text: str = ""
     context: str = ""  # Surrounding code context
-    parameters: Optional[Dict[str, Any]] = None  # DEPRECATED: Always None, kept for DB compatibility
     priority: int = TaskPriority.MEDIUM.value
     status: str = TaskStatus.PENDING.value
     created_at: Optional[str] = None
@@ -50,16 +58,11 @@ class DocTask:
 
     def to_dict(self) -> Dict[str, Any]:
         """Convert to dictionary."""
-        data = asdict(self)
-        if self.parameters is not None:
-            data['parameters'] = json.dumps(self.parameters)
-        return data
+        return asdict(self)
 
     @classmethod
     def from_dict(cls, data: Dict[str, Any]) -> 'DocTask':
         """Create from dictionary."""
-        if 'parameters' in data and isinstance(data['parameters'], str):
-            data['parameters'] = json.loads(data['parameters']) if data['parameters'] else None
         return cls(**data)
 
 
@@ -96,7 +99,6 @@ class QueueManager:
                 task_type TEXT NOT NULL,
                 marker_text TEXT,
                 context TEXT,
-                parameters TEXT,
                 priority INTEGER DEFAULT 5,
                 status TEXT DEFAULT 'pending',
                 created_at TEXT DEFAULT CURRENT_TIMESTAMP,
