@@ -37,6 +37,7 @@ Line: {line_number}
 4. Does extended description explain responsibilities and design?
 5. Is indentation consistent (4 spaces)?
 6. Does it match the actual class implementation?
+7. **LINE LENGTH**: Are lines kept under 79 characters? Long descriptions should be broken naturally at logical points (after commas, conjunctions, or complete thoughts).
 
 ## Output Format
 Provide your response in JSON format:

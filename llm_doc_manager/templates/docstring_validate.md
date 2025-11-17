@@ -45,6 +45,7 @@ The COMPLETE function implementation is provided below. You must validate the do
 7. Are examples present only when they significantly aid understanding?
 8. Does indentation use 4 spaces consistently?
 9. Does the docstring match the actual implementation (not just the signature)?
+10. **LINE LENGTH**: Are lines kept under 79 characters? Long descriptions should be broken naturally at logical points (after commas, conjunctions, or complete thoughts).
 
 ## Output Format
 Provide your response in JSON format:

@@ -28,6 +28,7 @@ Example (optional, include if function is complex or usage is non-obvious):
 5. Include example only if it significantly aids understanding
 6. Use 4-space indentation
 7. Type hints MUST match function signature
+8. **LINE LENGTH**: Keep lines under 79 characters. Break long descriptions naturally at logical points (after commas, conjunctions, or complete thoughts). Never let a single line exceed screen width.
 
 ## Complete Function Code:
 File: {file_path}

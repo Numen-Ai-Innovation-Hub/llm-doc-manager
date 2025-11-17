@@ -29,6 +29,7 @@ Note (optional):
 4. Include example if class instantiation or usage is non-obvious
 5. Use 4-space indentation
 6. Be comprehensive but concise
+7. **LINE LENGTH**: Keep lines under 79 characters. Break long descriptions naturally at logical points (after commas, conjunctions, or complete thoughts). Never let a single line exceed screen width.
 
 ## Complete Class Code:
 File: {file_path}

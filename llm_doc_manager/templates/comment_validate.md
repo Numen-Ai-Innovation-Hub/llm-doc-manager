@@ -20,6 +20,7 @@ Line: {line_number}
 3. Does it avoid explaining HOW (implementation details)?
 4. Is it written in clear, professional language?
 5. Does it accurately reflect the actual code behavior?
+6. **LINE LENGTH**: Is the comment under 72 characters (accounting for indentation)? Long comments should be broken into multiple logical sentences.
 
 ## Output Format
 Provide your response in JSON format:
