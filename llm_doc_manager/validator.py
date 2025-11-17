@@ -10,7 +10,7 @@ from dataclasses import dataclass
 from typing import List, Optional, Tuple
 from enum import Enum
 
-from .markers import MarkerDetector, MarkerType
+from .markers import MarkerDetector, MarkerType, MarkerPatterns
 
 
 class ValidationLevel(Enum):
@@ -52,18 +52,10 @@ class MarkerValidator:
         """Initialize marker validator."""
         self.detector = MarkerDetector()
 
-        # Compile marker patterns
-        self.start_patterns = {
-            MarkerType.DOCSTRING: re.compile(r'^\s*#\s*@llm-doc-start\s*$'),
-            MarkerType.CLASS_DOC: re.compile(r'^\s*#\s*@llm-class-start\s*$'),
-            MarkerType.COMMENT: re.compile(r'^\s*#\s*@llm-comm-start\s*$'),
-        }
-
-        self.end_patterns = {
-            MarkerType.DOCSTRING: re.compile(r'^\s*#\s*@llm-doc-end\s*$'),
-            MarkerType.CLASS_DOC: re.compile(r'^\s*#\s*@llm-class-end\s*$'),
-            MarkerType.COMMENT: re.compile(r'^\s*#\s*@llm-comm-end\s*$'),
-        }
+        # Use centralized pre-compiled patterns
+        compiled = MarkerPatterns.get_compiled_patterns()
+        self.start_patterns = {mtype: patterns['start'] for mtype, patterns in compiled.items()}
+        self.end_patterns = {mtype: patterns['end'] for mtype, patterns in compiled.items()}
 
     def validate_file(self, content: str, file_path: str) -> List[ValidationIssue]:
         """

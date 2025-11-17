@@ -12,6 +12,7 @@ from dataclasses import dataclass
 
 from .config import Config
 from .queue import DocTask, QueueManager
+from .markers import MarkerPatterns
 
 
 @dataclass
@@ -338,16 +339,8 @@ class Applier:
 
             lines = content.split('\n')
 
-            # Marker patterns to remove (both start and end for all types)
-            import re
-            marker_patterns = [
-                re.compile(r'^\s*#\s*@llm-doc-start\s*$'),
-                re.compile(r'^\s*#\s*@llm-doc-end\s*$'),
-                re.compile(r'^\s*#\s*@llm-class-start\s*$'),
-                re.compile(r'^\s*#\s*@llm-class-end\s*$'),
-                re.compile(r'^\s*#\s*@llm-comm-start\s*$'),
-                re.compile(r'^\s*#\s*@llm-comm-end\s*$'),
-            ]
+            # Use centralized marker patterns
+            marker_patterns = MarkerPatterns.get_all_removal_patterns()
 
             # Remove markers from bottom to top (preserves line indices)
             for i in range(len(lines) - 1, -1, -1):

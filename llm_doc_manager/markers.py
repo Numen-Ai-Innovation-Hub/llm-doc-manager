@@ -19,19 +19,62 @@ class MarkerType(Enum):
 
 
 class MarkerPatterns:
-    """Delimiter-based marker patterns."""
+    """Delimiter-based marker patterns.
 
-    # Delimiter markers for function/method documentation
+    SINGLE SOURCE OF TRUTH for all marker patterns.
+    All modules MUST import and use these - never redefine patterns elsewhere.
+    """
+
+    # Raw pattern strings
     DOC_START = r"^\s*#\s*@llm-doc-start\s*$"
     DOC_END = r"^\s*#\s*@llm-doc-end\s*$"
-
-    # Delimiter markers for class documentation
     CLASS_START = r"^\s*#\s*@llm-class-start\s*$"
     CLASS_END = r"^\s*#\s*@llm-class-end\s*$"
-
-    # Delimiter markers for code comments
     COMM_START = r"^\s*#\s*@llm-comm-start\s*$"
     COMM_END = r"^\s*#\s*@llm-comm-end\s*$"
+
+    # Cached compiled patterns
+    _compiled_patterns = None
+
+    @classmethod
+    def get_compiled_patterns(cls) -> dict:
+        """Get pre-compiled regex patterns for all marker types.
+
+        Returns:
+            Dict mapping MarkerType to {'start': Pattern, 'end': Pattern}
+        """
+        if cls._compiled_patterns is None:
+            cls._compiled_patterns = {
+                MarkerType.DOCSTRING: {
+                    'start': re.compile(cls.DOC_START),
+                    'end': re.compile(cls.DOC_END)
+                },
+                MarkerType.CLASS_DOC: {
+                    'start': re.compile(cls.CLASS_START),
+                    'end': re.compile(cls.CLASS_END)
+                },
+                MarkerType.COMMENT: {
+                    'start': re.compile(cls.COMM_START),
+                    'end': re.compile(cls.COMM_END)
+                }
+            }
+        return cls._compiled_patterns
+
+    @classmethod
+    def get_all_removal_patterns(cls) -> list:
+        """Get list of all compiled patterns for marker removal operations.
+
+        Returns:
+            List of compiled regex patterns (start and end for all types)
+        """
+        return [
+            re.compile(cls.DOC_START),
+            re.compile(cls.DOC_END),
+            re.compile(cls.CLASS_START),
+            re.compile(cls.CLASS_END),
+            re.compile(cls.COMM_START),
+            re.compile(cls.COMM_END),
+        ]
 
 
 @dataclass
@@ -52,21 +95,8 @@ class MarkerDetector:
 
     def __init__(self):
         """Initialize marker detector."""
-        # Compile all marker patterns
-        self.patterns = {
-            MarkerType.DOCSTRING: {
-                'start': re.compile(MarkerPatterns.DOC_START),
-                'end': re.compile(MarkerPatterns.DOC_END)
-            },
-            MarkerType.CLASS_DOC: {
-                'start': re.compile(MarkerPatterns.CLASS_START),
-                'end': re.compile(MarkerPatterns.CLASS_END)
-            },
-            MarkerType.COMMENT: {
-                'start': re.compile(MarkerPatterns.COMM_START),
-                'end': re.compile(MarkerPatterns.COMM_END)
-            }
-        }
+        # Use centralized pre-compiled patterns
+        self.patterns = MarkerPatterns.get_compiled_patterns()
 
     def detect_blocks(self, content: str, file_path: str = "") -> List[DetectedBlock]:
         """
