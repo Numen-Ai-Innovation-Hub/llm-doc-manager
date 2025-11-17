@@ -35,7 +35,7 @@ class DocTask:
     """Represents a documentation task."""
     id: Optional[int] = None
     file_path: str = ""
-    line_number: int = 0
+    line_number: int = 0  # EXTERNAL (1-indexed) - line number shown to user
     task_type: str = ""  # validate_docstring, generate_docstring
     marker_text: str = ""
     context: str = ""  # Surrounding code context

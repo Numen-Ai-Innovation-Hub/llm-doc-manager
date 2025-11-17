@@ -13,6 +13,7 @@ from dataclasses import dataclass
 from .config import Config
 from .queue import DocTask, QueueManager
 from .markers import MarkerPatterns
+from .docstring_utils import find_docstring_location
 
 
 @dataclass
@@ -112,7 +113,7 @@ class Applier:
 
         Args:
             content: Original file content
-            line_number: Line number where change occurs
+            line_number: EXTERNAL (1-indexed) line number where marker is
             original_text: Original text (for verification)
             suggested_text: New text to insert
             task_type: Type of task (determines how to apply)
@@ -144,8 +145,8 @@ class Applier:
         Replace or insert a docstring.
 
         Args:
-            lines: File lines
-            line_number: Starting line number (where marker start is)
+            lines: File lines (0-indexed array)
+            line_number: EXTERNAL (1-indexed) line number where marker start is
             original_text: Original docstring (if any)
             suggested_text: New docstring
             marker_prefix: Marker prefix (@llm-doc or @llm-class)
@@ -153,10 +154,10 @@ class Applier:
         Returns:
             Modified content
         """
-        # Find the function/class definition
-        # line_number is 1-indexed and points to marker start
+        # Convert EXTERNAL (1-indexed) to INTERNAL (0-indexed)
+        # line_number points to marker start (e.g., line 10 in editor = index 9)
         # Definition should be on the NEXT line after the marker
-        marker_line_idx = line_number - 1
+        marker_line_idx = line_number - 1  # INTERNAL: Convert to 0-indexed
         func_line_idx = None
 
         # Search FORWARD from marker to find the function/class definition
@@ -177,37 +178,9 @@ class Applier:
             # Fallback: assume function is right after marker
             func_line_idx = marker_line_idx + 1
 
-        # Look for existing docstring after the function definition
-        docstring_start = None
-        docstring_end = None
-
-        # Start looking from the line after the function definition
+        # Use centralized utility to find existing docstring
         search_start = func_line_idx + 1
-
-        for i in range(search_start, min(search_start + 10, len(lines))):
-            line = lines[i].strip()
-
-            # Skip empty lines
-            if not line:
-                continue
-
-            if line.startswith('"""') or line.startswith("'''"):
-                quote = '"""' if '"""' in line else "'''"
-                docstring_start = i
-
-                # Check if docstring ends on same line
-                if line.count(quote) >= 2:
-                    docstring_end = i
-                else:
-                    # Find end
-                    for j in range(i + 1, len(lines)):
-                        if quote in lines[j]:
-                            docstring_end = j
-                            break
-                break
-            else:
-                # If we hit non-docstring code, stop searching
-                break
+        docstring_start, docstring_end = find_docstring_location(lines, search_start)
 
         # Get indentation from the function definition line
         indent = ""
@@ -365,16 +338,16 @@ class Applier:
         Replace or insert an inline comment.
 
         Args:
-            lines: File lines
-            line_number: Starting line number (where @llm-comm-start marker is)
+            lines: File lines (0-indexed array)
+            line_number: EXTERNAL (1-indexed) line number where @llm-comm-start marker is
             original_text: Original comment (if any)
             suggested_text: New comment text
 
         Returns:
             Modified content
         """
-        # line_number is 1-indexed and points to @llm-comm-start marker
-        marker_line_idx = line_number - 1
+        # Convert EXTERNAL (1-indexed) to INTERNAL (0-indexed)
+        marker_line_idx = line_number - 1  # INTERNAL: Convert to 0-indexed
 
         # Find the code line (should be right after the marker)
         code_line_idx = None

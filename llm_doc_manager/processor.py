@@ -12,6 +12,7 @@ from dataclasses import dataclass
 from .config import Config, ConfigManager
 from .queue import DocTask, QueueManager, TaskStatus
 from .markers import MarkerType
+from .docstring_utils import extract_docstring
 
 
 @dataclass
@@ -223,33 +224,9 @@ class Processor:
         Returns:
             Current docstring or empty string
         """
-        lines = context.split('\n')
-        docstring_lines = []
-        in_docstring = False
-        quote_type = None
-
-        for line in lines:
-            stripped = line.strip()
-
-            # Check for docstring start
-            if not in_docstring:
-                if stripped.startswith('"""') or stripped.startswith("'''"):
-                    in_docstring = True
-                    quote_type = '"""' if '"""' in stripped else "'''"
-                    docstring_lines.append(line)
-
-                    # Check if docstring ends on same line
-                    if stripped.count(quote_type) >= 2:
-                        break
-            else:
-                docstring_lines.append(line)
-                if quote_type in stripped:
-                    break
-
-        if docstring_lines:
-            return '\n'.join(docstring_lines)
-
-        return ""
+        # Use centralized utility function
+        docstring = extract_docstring(context)
+        return docstring if docstring else ""
 
     def _call_llm(self, prompt: str) -> tuple[str, int]:
         """
