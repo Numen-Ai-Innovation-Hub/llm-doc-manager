@@ -159,8 +159,15 @@ class Applier:
         func_line_idx = None
 
         # Search FORWARD from marker to find the function/class definition
-        for i in range(marker_line_idx + 1, min(len(lines), marker_line_idx + 10)):
+        # Search until we find definition or reach end of file (no arbitrary limit)
+        for i in range(marker_line_idx + 1, len(lines)):
             line = lines[i].strip()
+
+            # Stop if we hit another marker (means we're past the block)
+            if line.startswith('# @llm-'):
+                break
+
+            # Check for function/class definition
             if line.startswith('def ') or line.startswith('async def ') or line.startswith('class '):
                 func_line_idx = i
                 break
@@ -210,8 +217,25 @@ class Applier:
                     indent += char
                 else:
                     break
-            # Add one level of indentation for docstring
-            indent += "    "  # Standard 4 spaces
+
+            # Detect indentation style and add one level
+            if '\t' in indent:
+                # Project uses tabs
+                indent += '\t'
+            elif len(indent) >= 2:
+                # Project uses spaces - detect the increment size
+                # Common sizes: 2, 4, or 8 spaces
+                # Assume same size as current indent (or 4 if indent is unusual)
+                indent_size = len(indent)
+                if indent_size % 4 == 0:
+                    indent += '    '  # 4 spaces
+                elif indent_size % 2 == 0:
+                    indent += '  '  # 2 spaces
+                else:
+                    indent += '    '  # Default to 4 spaces
+            else:
+                # No indentation detected or single space - default to 4 spaces
+                indent += '    '
 
         # Format new docstring
         formatted_docstring = self._format_docstring(suggested_text, indent)
