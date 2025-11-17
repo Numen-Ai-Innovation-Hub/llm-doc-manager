@@ -21,11 +21,6 @@ def extract_docstring(code: str) -> Optional[str]:
     Returns:
         Optional[str]: Extracted docstring content (without quotes), or None if no
         docstring found
-
-    Example:
-        >>> code = '''def foo():\\n    """This is a docstring."""\\n    pass'''
-        >>> extract_docstring(code)
-        'This is a docstring.'
     """
     # Match both """ and ''' docstrings
     # Pattern: captures content between triple quotes
@@ -52,11 +47,6 @@ def extract_function_signature(code: str) -> Optional[str]:
     Returns:
         Optional[str]: Function signature (e.g., "def foo(x, y):"), or None if not
         found
-
-    Example:
-        >>> code = "def foo(x, y):\\n    pass"
-        >>> extract_function_signature(code)
-        'def foo(x, y):'
     """
     # Match function/method definition (including async)
     pattern = r'^\s*(async\s+)?def\s+\w+\s*\([^)]*\)\s*(?:->.*)?:'
@@ -77,11 +67,6 @@ def extract_class_signature(code: str) -> Optional[str]:
 
     Returns:
         Optional[str]: Class signature (e.g., "class Foo:"), or None if not found
-
-    Example:
-        >>> code = "class Foo(Bar):\\n    pass"
-        >>> extract_class_signature(code)
-        'class Foo(Bar):'
     """
     # Match class definition
     pattern = r'^\s*class\s+\w+\s*(?:\([^)]*\))?\s*:'
@@ -102,12 +87,6 @@ def has_docstring(code: str) -> bool:
 
     Returns:
         bool: True if docstring is present, False otherwise
-
-    Example:
-        >>> has_docstring('def foo():\\n    """Docstring"""\\n    pass')
-        True
-        >>> has_docstring('def foo():\\n    pass')
-        False
     """
     return extract_docstring(code) is not None
 
@@ -125,11 +104,6 @@ def find_docstring_location(lines: list, start_idx: int) -> Tuple[Optional[int],
     Returns:
         Tuple[Optional[int], Optional[int]]: (start_line_idx, end_line_idx) of
         docstring, or (None, None) if not found. Indices are 0-based.
-
-    Example:
-        >>> lines = ['def foo():', '    """', '    Docstring', '    """', '    pass']
-        >>> find_docstring_location(lines, 0)
-        (1, 3)
     """
     # Look for opening triple quotes
     docstring_start = None
@@ -171,10 +145,6 @@ def strip_indentation(text: str) -> str:
 
     Returns:
         str: Text with common indentation removed
-
-    Example:
-        >>> strip_indentation("    Line 1\\n    Line 2")
-        'Line 1\\nLine 2'
     """
     lines = text.split('\n')
 
