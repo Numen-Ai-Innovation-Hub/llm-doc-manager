@@ -99,13 +99,22 @@ class MarkerDetector:
             if marker_type:
                 start_line = i + 1  # 1-indexed
 
-                # Find corresponding end marker
+                # Find corresponding end marker with nesting support
                 end_line = None
+                start_pattern = self.patterns[marker_type]['start']
                 end_pattern = self.patterns[marker_type]['end']
+                depth = 1  # We're inside one marker already
+
                 for j in range(i + 1, len(lines)):
-                    if end_pattern.match(lines[j]):
-                        end_line = j + 1  # 1-indexed
-                        break
+                    # Check for nested start markers of the same type
+                    if start_pattern.match(lines[j]):
+                        depth += 1
+                    elif end_pattern.match(lines[j]):
+                        depth -= 1
+                        if depth == 0:
+                            # Found the matching end marker
+                            end_line = j + 1  # 1-indexed
+                            break
 
                 if end_line is None:
                     # No matching end marker - skip this start marker
