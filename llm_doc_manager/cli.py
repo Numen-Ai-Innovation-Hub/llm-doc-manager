@@ -245,6 +245,7 @@ def apply():
 
         applied = 0
         failed = 0
+        modified_files = set()  # Track which files were modified
 
         for task in accepted_tasks:
             if not task.suggestion:
@@ -266,11 +267,21 @@ def apply():
             if applier.apply_suggestion(suggestion):
                 click.echo(f"✓ {task.file_path}:{task.line_number}")
                 applied += 1
+                modified_files.add(task.file_path)  # Track modified file
                 # Auto-delete applied task from queue
                 queue_manager.delete_task(task.id)
             else:
                 click.echo(f"✗ {task.file_path}:{task.line_number}")
                 failed += 1
+
+        # Remove all markers from modified files (final cleanup pass)
+        if modified_files:
+            click.echo(f"\n🧹 Cleaning up markers from {len(modified_files)} file(s)...")
+            for file_path in modified_files:
+                if applier.remove_all_markers(file_path):
+                    click.echo(f"  ✓ Removed markers from {file_path}")
+                else:
+                    click.echo(f"  ⚠ Could not remove markers from {file_path}")
 
         click.echo(f"\n✓ Applied {applied} change(s)")
         if failed:

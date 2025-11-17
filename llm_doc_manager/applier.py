@@ -227,8 +227,9 @@ class Applier:
             for i, docstring_line in enumerate(docstring_lines):
                 lines.insert(insert_at + i, docstring_line)
 
-        # Remove the markers using shared method
-        self._remove_markers(lines, marker_line_idx, marker_prefix)
+        # NOTE: Markers are NOT removed here - they will be removed in a final pass
+        # after all documentation has been applied. This prevents issues with
+        # line number shifts when processing multiple markers.
 
         return '\n'.join(lines)
 
@@ -290,31 +291,56 @@ class Applier:
 
         return '\n'.join(formatted_lines)
 
-    def _remove_markers(self, lines: List[str], marker_line_idx: int, marker_prefix: str) -> None:
+    def remove_all_markers(self, file_path: str) -> bool:
         """
-        Remove start and end markers from the lines.
+        Remove all documentation markers from a file after all changes have been applied.
 
-        Uses reverse search strategy (from end to start) which works for all marker types.
+        This is called as a final cleanup step after all documentation has been inserted.
+        Removing markers in a single pass (rather than during each application) prevents
+        line number shifts that would cause subsequent markers to be misaligned.
 
         Args:
-            lines: File lines (modified in place)
-            marker_line_idx: Index of the start marker
-            marker_prefix: Marker prefix (@llm-doc, @llm-class, or @llm-comm)
+            file_path: Path to file to clean up
+
+        Returns:
+            True if successful, False otherwise
         """
-        # Search backwards for end marker (after the start marker)
-        end_marker_idx = None
-        end_marker_pattern = f'{marker_prefix}-end'
+        try:
+            file_path = Path(file_path)
 
-        for i in range(len(lines) - 1, marker_line_idx, -1):
-            if end_marker_pattern in lines[i]:
-                end_marker_idx = i
-                break
+            # Read file content
+            with open(file_path, 'r', encoding='utf-8') as f:
+                content = f.read()
 
-        # Remove markers (end first to preserve indices)
-        if end_marker_idx is not None:
-            del lines[end_marker_idx]
-        # Remove start marker
-        del lines[marker_line_idx]
+            lines = content.split('\n')
+
+            # Marker patterns to remove (both start and end for all types)
+            import re
+            marker_patterns = [
+                re.compile(r'^\s*#\s*@llm-doc-start\s*$'),
+                re.compile(r'^\s*#\s*@llm-doc-end\s*$'),
+                re.compile(r'^\s*#\s*@llm-class-start\s*$'),
+                re.compile(r'^\s*#\s*@llm-class-end\s*$'),
+                re.compile(r'^\s*#\s*@llm-comm-start\s*$'),
+                re.compile(r'^\s*#\s*@llm-comm-end\s*$'),
+            ]
+
+            # Remove markers from bottom to top (preserves line indices)
+            for i in range(len(lines) - 1, -1, -1):
+                for pattern in marker_patterns:
+                    if pattern.match(lines[i]):
+                        del lines[i]
+                        break  # Move to next line after deleting
+
+            # Write cleaned content back
+            with open(file_path, 'w', encoding='utf-8') as f:
+                f.write('\n'.join(lines))
+
+            return True
+
+        except Exception as e:
+            print(f"Error removing markers: {e}")
+            return False
 
     def _replace_comment(self, lines: List[str], line_number: int,
                         original_text: str, suggested_text: str) -> str:
@@ -362,8 +388,9 @@ class Applier:
         # Insert comment above the code line
         lines.insert(code_line_idx, formatted_comment)
 
-        # Remove the markers using shared method
-        self._remove_markers(lines, marker_line_idx, '@llm-comm')
+        # NOTE: Markers are NOT removed here - they will be removed in a final pass
+        # after all documentation has been applied. This prevents issues with
+        # line number shifts when processing multiple markers.
 
         return '\n'.join(lines)
 
