@@ -39,7 +39,7 @@ class DocTask:
     task_type: str = ""  # validate_docstring, generate_docstring
     marker_text: str = ""
     context: str = ""  # Surrounding code context
-    parameters: Optional[Dict[str, Any]] = None
+    parameters: Optional[Dict[str, Any]] = None  # DEPRECATED: Always None, kept for DB compatibility
     priority: int = TaskPriority.MEDIUM.value
     status: str = TaskStatus.PENDING.value
     created_at: Optional[str] = None
@@ -248,16 +248,6 @@ class QueueManager:
         conn.close()
 
         return stats
-
-    def clear_completed(self):
-        """Remove all completed tasks from the queue."""
-        conn = sqlite3.connect(self.db_path)
-        cursor = conn.cursor()
-
-        cursor.execute("DELETE FROM tasks WHERE status = ?", (TaskStatus.COMPLETED.value,))
-
-        conn.commit()
-        conn.close()
 
     def clear_all(self):
         """Remove all tasks from the queue."""

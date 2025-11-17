@@ -23,7 +23,6 @@ class ProcessResult:
     task_id: int
     success: bool
     suggestion: Optional[str] = None
-    metadata: Optional[Dict[str, Any]] = None
     error: Optional[str] = None
     tokens_used: int = 0
 
@@ -52,9 +51,14 @@ class Processor:
         config_manager = ConfigManager()
         api_key = config_manager.get_api_key(self.config)
 
+        # Get base_url from config (if configured)
+        base_url = self.config.llm.base_url if self.config.llm.base_url else None
+
         if provider == "anthropic":
             try:
                 import anthropic
+                if base_url:
+                    return anthropic.Anthropic(api_key=api_key, base_url=base_url)
                 return anthropic.Anthropic(api_key=api_key)
             except ImportError:
                 raise ImportError("anthropic package not installed. Run: pip install anthropic")
@@ -62,14 +66,18 @@ class Processor:
         elif provider == "openai":
             try:
                 import openai
+                if base_url:
+                    return openai.OpenAI(api_key=api_key, base_url=base_url)
                 return openai.OpenAI(api_key=api_key)
             except ImportError:
                 raise ImportError("openai package not installed. Run: pip install openai")
 
         elif provider == "ollama":
-            # Ollama client (local)
+            # Ollama client (local) - base_url for ollama if needed
             try:
                 import ollama
+                if base_url:
+                    return ollama.Client(host=base_url)
                 return ollama.Client()
             except ImportError:
                 raise ImportError("ollama package not installed. Run: pip install ollama")

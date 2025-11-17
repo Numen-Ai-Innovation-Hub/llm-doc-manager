@@ -10,6 +10,10 @@ from pathlib import Path
 from typing import Dict, List, Optional, Any
 from dataclasses import dataclass, field, asdict
 
+from .logging_config import get_logger
+
+logger = get_logger(__name__)
+
 # Load environment variables from .env file in tool's directory
 try:
     from dotenv import load_dotenv
@@ -50,8 +54,6 @@ class OutputConfig:
     mode: str = "interactive"  # interactive, auto, pr
     backup: bool = True
     backup_dir: str = ".llm-doc-manager/backups"
-    diff_format: str = "unified"  # unified, side-by-side
-    auto_apply_confidence_threshold: float = 0.9
 
 
 @dataclass
@@ -119,8 +121,8 @@ class ConfigManager:
 
             return Config.from_dict(data)
         except Exception as e:
-            print(f"Warning: Error loading config file: {e}")
-            print("Using default configuration.")
+            logger.warning(f"Error loading config file: {e}")
+            logger.info("Using default configuration.")
             return Config()
 
     def save(self, config: Config):
@@ -247,21 +249,8 @@ class ConfigManager:
         try:
             import shutil
             shutil.rmtree(self.config_dir)
-            print(f"✓ Configuration directory removed: {self.config_dir}")
+            logger.info(f"Configuration directory removed: {self.config_dir}")
             return True
         except Exception as e:
-            print(f"Error removing configuration: {e}")
+            logger.error(f"Error removing configuration: {e}")
             return False
-
-
-def get_config_manager(project_root: Optional[str] = None) -> ConfigManager:
-    """
-    Get a ConfigManager instance.
-
-    Args:
-        project_root: Root directory of the project
-
-    Returns:
-        ConfigManager instance
-    """
-    return ConfigManager(project_root)

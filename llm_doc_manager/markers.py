@@ -10,6 +10,8 @@ from dataclasses import dataclass
 from typing import Dict, List, Optional
 from enum import Enum
 
+from .docstring_utils import find_docstring_location
+
 
 class MarkerType(Enum):
     """Types of documentation markers."""
@@ -256,6 +258,8 @@ class MarkerDetector:
         """
         Extract docstring from block after a definition line.
 
+        Uses centralized find_docstring_location() from docstring_utils.
+
         Args:
             block_lines: Lines of code in the block
             def_line_idx: Index of the definition line (function/class)
@@ -263,30 +267,8 @@ class MarkerDetector:
         Returns:
             Docstring text if found and valid, None otherwise
         """
-        docstring_start = None
-        docstring_end = None
-        quote_type = None
-
-        for i in range(def_line_idx + 1, len(block_lines)):
-            line = block_lines[i].strip()
-
-            if not line:
-                continue
-
-            if line.startswith('"""') or line.startswith("'''"):
-                quote_type = '"""' if '"""' in line else "'''"
-                docstring_start = i
-
-                if line.count(quote_type) >= 2:
-                    docstring_end = i
-                else:
-                    for j in range(i + 1, len(block_lines)):
-                        if quote_type in block_lines[j]:
-                            docstring_end = j
-                            break
-                break
-            else:
-                break
+        # Use centralized utility function
+        docstring_start, docstring_end = find_docstring_location(block_lines, def_line_idx + 1)
 
         if docstring_start is not None and docstring_end is not None:
             docstring_lines = block_lines[docstring_start:docstring_end + 1]
@@ -408,8 +390,3 @@ class MarkerDetector:
             })
 
         return markers
-
-
-def get_default_detector() -> MarkerDetector:
-    """Get a marker detector with default patterns."""
-    return MarkerDetector()

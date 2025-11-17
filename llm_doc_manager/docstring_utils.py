@@ -37,60 +37,6 @@ def extract_docstring(code: str) -> Optional[str]:
     return None
 
 
-def extract_function_signature(code: str) -> Optional[str]:
-    """
-    Extract function or method signature from Python code.
-
-    Args:
-        code (str): Python code containing function/method definition
-
-    Returns:
-        Optional[str]: Function signature (e.g., "def foo(x, y):"), or None if not
-        found
-    """
-    # Match function/method definition (including async)
-    pattern = r'^\s*(async\s+)?def\s+\w+\s*\([^)]*\)\s*(?:->.*)?:'
-    match = re.search(pattern, code, re.MULTILINE)
-
-    if match:
-        return match.group(0).strip()
-
-    return None
-
-
-def extract_class_signature(code: str) -> Optional[str]:
-    """
-    Extract class signature from Python code.
-
-    Args:
-        code (str): Python code containing class definition
-
-    Returns:
-        Optional[str]: Class signature (e.g., "class Foo:"), or None if not found
-    """
-    # Match class definition
-    pattern = r'^\s*class\s+\w+\s*(?:\([^)]*\))?\s*:'
-    match = re.search(pattern, code, re.MULTILINE)
-
-    if match:
-        return match.group(0).strip()
-
-    return None
-
-
-def has_docstring(code: str) -> bool:
-    """
-    Check if code contains a docstring.
-
-    Args:
-        code (str): Python code to check
-
-    Returns:
-        bool: True if docstring is present, False otherwise
-    """
-    return extract_docstring(code) is not None
-
-
 def find_docstring_location(lines: list, start_idx: int) -> Tuple[Optional[int], Optional[int]]:
     """
     Find the start and end line indices of a docstring.
@@ -134,37 +80,3 @@ def find_docstring_location(lines: list, start_idx: int) -> Tuple[Optional[int],
         return (docstring_start, docstring_end)
 
     return (None, None)
-
-
-def strip_indentation(text: str) -> str:
-    """
-    Remove common leading indentation from all lines.
-
-    Args:
-        text (str): Text with potential indentation
-
-    Returns:
-        str: Text with common indentation removed
-    """
-    lines = text.split('\n')
-
-    # Find minimum indentation (ignoring empty lines)
-    min_indent = float('inf')
-    for line in lines:
-        if line.strip():  # Skip empty lines
-            indent = len(line) - len(line.lstrip())
-            min_indent = min(min_indent, indent)
-
-    # Handle case where all lines are empty
-    if min_indent == float('inf'):
-        return text
-
-    # Remove common indentation
-    stripped_lines = []
-    for line in lines:
-        if line.strip():  # Non-empty line
-            stripped_lines.append(line[min_indent:])
-        else:  # Empty line
-            stripped_lines.append('')
-
-    return '\n'.join(stripped_lines)

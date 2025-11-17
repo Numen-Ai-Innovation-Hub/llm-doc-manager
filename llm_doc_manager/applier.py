@@ -88,7 +88,7 @@ class Applier:
             return True
 
         except Exception as e:
-            print(f"Error applying suggestion: {e}")
+            logger.error(f"Error applying suggestion: {e}")
             return False
 
     def _create_backup(self, file_path: Path):
@@ -332,7 +332,7 @@ class Applier:
             return True
 
         except Exception as e:
-            print(f"Error removing markers: {e}")
+            logger.error(f"Error removing markers: {e}")
             return False
 
     def _replace_comment(self, lines: List[str], line_number: int,
@@ -420,21 +420,5 @@ class Applier:
             return True
 
         except Exception as e:
-            print(f"Error during rollback: {e}")
+            logger.error(f"Error during rollback: {e}")
             return False
-
-    def list_backups(self) -> List[Path]:
-        """
-        List all available backups.
-
-        Returns:
-            List of backup file paths
-        """
-        if not self.backup_dir.exists():
-            return []
-
-        return sorted(
-            self.backup_dir.glob("*.bak"),
-            key=lambda p: p.stat().st_mtime,
-            reverse=True
-        )

@@ -230,22 +230,3 @@ class MarkerValidator:
             parts.append(f"ℹ️  {len(infos)} info")
 
         return ", ".join(parts)
-
-
-def validate_markers(content: str, file_path: str) -> Tuple[bool, List[ValidationIssue]]:
-    """
-    Validate markers in file content.
-
-    Args:
-        content: File content
-        file_path: Path to file
-
-    Returns:
-        Tuple of (is_valid, issues)
-        - is_valid: True if no errors (warnings are OK)
-        - issues: List of all validation issues
-    """
-    validator = MarkerValidator()
-    issues = validator.validate_file(content, file_path)
-    is_valid = not validator.has_errors(issues)
-    return is_valid, issues
