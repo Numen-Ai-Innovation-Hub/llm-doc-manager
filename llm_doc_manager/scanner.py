@@ -10,7 +10,7 @@ from pathlib import Path
 from typing import List, Optional, Set
 from dataclasses import dataclass
 
-from .markers import MarkerDetector, MarkerType
+from .markers import MarkerDetector
 from .queue import DocTask, QueueManager
 from .config import Config
 from .validator import MarkerValidator, ValidationIssue, ValidationLevel

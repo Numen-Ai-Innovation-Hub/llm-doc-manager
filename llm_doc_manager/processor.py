@@ -11,7 +11,6 @@ from dataclasses import dataclass
 
 from .config import Config, ConfigManager
 from .queue import DocTask, QueueManager, TaskStatus
-from .markers import MarkerType
 from .docstring_utils import extract_docstring
 
 

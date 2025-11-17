@@ -322,6 +322,99 @@ def apply():
 
 
 @cli.command()
+@click.argument('paths', nargs=-1, type=click.Path(exists=True))
+@click.option('--dry-run', is_flag=True, help='Show what would be removed without removing')
+def remove_markers(paths, dry_run):
+    """
+    Remove markers from files safely.
+
+    Can be run at any time to clean up orphaned markers after applying changes.
+    If no paths specified, uses paths from config.
+
+    Examples:
+        llm-doc-manager remove-markers                 # Clean all scanned paths
+        llm-doc-manager remove-markers src/            # Clean specific directory
+        llm-doc-manager remove-markers --dry-run src/  # Preview removal
+    """
+    try:
+        # Load config
+        config_manager = ConfigManager()
+        config = config_manager.load()
+
+        # Initialize components
+        queue_manager = QueueManager()
+        applier = Applier(config, queue_manager)
+
+        # Get paths to clean
+        if not paths:
+            paths = config.scanning.paths
+
+        # Collect all Python files
+        from pathlib import Path
+        files_to_clean = []
+        for path_str in paths:
+            path = Path(path_str)
+            if path.is_file() and path.suffix == '.py':
+                files_to_clean.append(str(path))
+            elif path.is_dir():
+                files_to_clean.extend([str(p) for p in path.rglob('*.py')])
+
+        if not files_to_clean:
+            click.echo("No Python files found to clean.")
+            return
+
+        if dry_run:
+            click.echo(f"🔍 Dry run: would clean {len(files_to_clean)} file(s)\n")
+        else:
+            click.echo(f"🧹 Cleaning markers from {len(files_to_clean)} file(s)...\n")
+
+        cleaned = 0
+        errors = 0
+
+        for file_path in files_to_clean:
+            try:
+                # Read file to check for markers
+                with open(file_path, 'r', encoding='utf-8') as f:
+                    content = f.read()
+
+                # Check if file has any markers
+                has_markers = any(marker in content for marker in [
+                    '@llm-doc-start', '@llm-doc-end',
+                    '@llm-class-start', '@llm-class-end',
+                    '@llm-comm-start', '@llm-comm-end'
+                ])
+
+                if has_markers:
+                    if dry_run:
+                        click.echo(f"Would clean: {file_path}")
+                        cleaned += 1
+                    else:
+                        if applier.remove_all_markers(file_path):
+                            click.echo(f"✓ {file_path}")
+                            cleaned += 1
+                        else:
+                            click.echo(f"✗ {file_path}")
+                            errors += 1
+            except Exception as e:
+                click.echo(f"✗ {file_path}: {e}")
+                errors += 1
+
+        # Summary
+        click.echo(f"\n{'='*60}")
+        if dry_run:
+            click.echo(f"Dry run complete: {cleaned} file(s) would be cleaned")
+        else:
+            click.echo(f"Cleanup complete:")
+            click.echo(f"  Cleaned: {cleaned}")
+            if errors:
+                click.echo(f"  Errors: {errors}")
+
+    except Exception as e:
+        click.echo(f"❌ Error: {e}", err=True)
+        sys.exit(1)
+
+
+@cli.command()
 def status():
     """Show queue status and statistics."""
     try:
