@@ -144,8 +144,8 @@ class MarkerDetector:
                     marker_type=marker_type
                 ))
 
-                # Move past this block
-                i = end_line
+                # Move to next line (to allow scanning for nested markers of different types)
+                i += 1
             else:
                 i += 1
 
