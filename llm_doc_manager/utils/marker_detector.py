@@ -25,8 +25,8 @@ from dataclasses import dataclass
 from typing import Dict, List, Optional
 from enum import Enum
 
-from .docstring_utils import find_docstring_location
-from .queue import TaskPriority
+from .docstring_handler import find_docstring_location
+from ..src.queue import TaskPriority
 
 
 class MarkerType(Enum):

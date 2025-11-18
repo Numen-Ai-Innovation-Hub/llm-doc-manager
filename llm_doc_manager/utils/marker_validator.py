@@ -10,7 +10,7 @@ from dataclasses import dataclass
 from typing import List, Optional, Tuple
 from enum import Enum
 
-from .markers import MarkerDetector, MarkerType, MarkerPatterns
+from .marker_detector import MarkerDetector, MarkerType, MarkerPatterns
 
 
 class ValidationLevel(Enum):

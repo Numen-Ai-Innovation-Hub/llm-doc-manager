@@ -11,8 +11,8 @@ from dataclasses import dataclass
 
 from .config import Config, ConfigManager
 from .queue import DocTask, QueueManager, TaskStatus
-from .docstring_utils import extract_docstring
-from .logging_config import get_logger
+from ..utils.docstring_handler import extract_docstring
+from ..utils.logger_setup import get_logger
 
 logger = get_logger(__name__)
 
@@ -88,7 +88,7 @@ class Processor:
     def _load_templates(self) -> Dict[str, str]:
         """Load prompt templates."""
         templates = {}
-        template_dir = Path(__file__).parent / "templates"
+        template_dir = Path(__file__).parent.parent / "templates"
 
         template_files = {
             "docstring_generate": "docstring_generate.md",

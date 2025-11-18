@@ -11,11 +11,11 @@ from pathlib import Path
 from typing import List, Optional, Set
 from dataclasses import dataclass
 
-from .markers import MarkerDetector
+from ..utils.marker_detector import MarkerDetector
 from .queue import DocTask, QueueManager
 from .config import Config
-from .validator import MarkerValidator, ValidationIssue, ValidationLevel
-from .logging_config import get_logger
+from ..utils.marker_validator import MarkerValidator, ValidationIssue, ValidationLevel
+from ..utils.logger_setup import get_logger
 
 logger = get_logger(__name__)
 

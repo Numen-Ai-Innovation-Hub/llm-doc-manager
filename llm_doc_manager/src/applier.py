@@ -27,9 +27,9 @@ from dataclasses import dataclass
 
 from .config import Config
 from .queue import DocTask, QueueManager
-from .markers import MarkerPatterns
-from .docstring_utils import find_docstring_location
-from .logging_config import get_logger
+from ..utils.marker_detector import MarkerPatterns
+from ..utils.docstring_handler import find_docstring_location
+from ..utils.logger_setup import get_logger
 
 logger = get_logger(__name__)
 

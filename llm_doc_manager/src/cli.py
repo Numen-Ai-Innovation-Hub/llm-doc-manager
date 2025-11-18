@@ -15,7 +15,7 @@ from .queue import QueueManager, TaskStatus
 from .scanner import Scanner
 from .processor import Processor, ProcessResult
 from .applier import Applier, Suggestion
-from .validator import MarkerValidator, ValidationLevel
+from ..utils.marker_validator import MarkerValidator, ValidationLevel
 
 
 @click.group()

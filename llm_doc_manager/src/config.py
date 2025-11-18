@@ -10,7 +10,7 @@ from pathlib import Path
 from typing import Dict, List, Optional, Any
 from dataclasses import dataclass, field, asdict
 
-from .logging_config import get_logger
+from ..utils.logger_setup import get_logger
 
 logger = get_logger(__name__)
 
