@@ -38,6 +38,3 @@ ENV/
 .DS_Store
 Thumbs.db
 .env
-
-# LLM Doc Manager data directory (user-specific)
-.llm-doc-manager/
