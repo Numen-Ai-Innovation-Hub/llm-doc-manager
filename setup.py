@@ -60,7 +60,7 @@ setup(
     },
     entry_points={
         "console_scripts": [
-            "llm-doc-manager=llm_doc_manager.cli:main",
+            "llm-doc-manager=llm_doc_manager.src.cli:main",
         ],
     },
 )
