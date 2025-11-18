@@ -78,22 +78,6 @@ class MarkerPatterns:
             }
         return cls._compiled_patterns
 
-    @classmethod
-    def get_all_removal_patterns(cls) -> list:
-        """Get list of all compiled patterns for marker removal operations.
-
-        Returns:
-            List of compiled regex patterns (start and end for all types)
-        """
-        return [
-            re.compile(cls.DOC_START),
-            re.compile(cls.DOC_END),
-            re.compile(cls.CLASS_START),
-            re.compile(cls.CLASS_END),
-            re.compile(cls.COMM_START),
-            re.compile(cls.COMM_END),
-        ]
-
 
 @dataclass
 class DetectedBlock:

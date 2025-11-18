@@ -27,7 +27,6 @@ from dataclasses import dataclass
 
 from .config import Config
 from .queue import DocTask, QueueManager
-from ..utils.marker_detector import MarkerPatterns
 from ..utils.docstring_handler import find_docstring_location
 from ..utils.logger_setup import get_logger
 
@@ -253,9 +252,8 @@ class Applier:
             for i, docstring_line in enumerate(docstring_lines):
                 lines.insert(insert_at + i, docstring_line)
 
-        # NOTE: Markers are NOT removed here - they will be removed in a final pass
-        # after all documentation has been applied. This prevents issues with
-        # line number shifts when processing multiple markers.
+        # NOTE: Markers are preserved in the code for hash-based tracking.
+        # They will NOT be removed after documentation is applied.
 
         return '\n'.join(lines)
 
@@ -317,49 +315,6 @@ class Applier:
 
         return '\n'.join(formatted_lines)
 
-    def remove_all_markers(self, file_path: str) -> bool:
-        """
-        Remove all documentation markers from a file after all changes have been applied.
-
-        This is called as a final cleanup step after all documentation has been inserted.
-        Removing markers in a single pass (rather than during each application) prevents
-        line number shifts that would cause subsequent markers to be misaligned.
-
-        Args:
-            file_path: Path to file to clean up
-
-        Returns:
-            True if successful, False otherwise
-        """
-        try:
-            file_path = Path(file_path)
-
-            # Read file content
-            with open(file_path, 'r', encoding='utf-8') as f:
-                content = f.read()
-
-            lines = content.split('\n')
-
-            # Use centralized marker patterns
-            marker_patterns = MarkerPatterns.get_all_removal_patterns()
-
-            # Remove markers from bottom to top (preserves line indices)
-            for i in range(len(lines) - 1, -1, -1):
-                for pattern in marker_patterns:
-                    if pattern.match(lines[i]):
-                        del lines[i]
-                        break  # Move to next line after deleting
-
-            # Write cleaned content back
-            with open(file_path, 'w', encoding='utf-8') as f:
-                f.write('\n'.join(lines))
-
-            return True
-
-        except Exception as e:
-            logger.error(f"Error removing markers: {e}")
-            return False
-
     def _replace_comment(self, lines: List[str], line_number: int,
                         original_text: str, suggested_text: str) -> str:
         """
@@ -416,9 +371,8 @@ class Applier:
         # Insert comment above the code line
         lines.insert(code_line_idx, formatted_comment)
 
-        # NOTE: Markers are NOT removed here - they will be removed in a final pass
-        # after all documentation has been applied. This prevents issues with
-        # line number shifts when processing multiple markers.
+        # NOTE: Markers are preserved in the code for hash-based tracking.
+        # They will NOT be removed after documentation is applied.
 
         return '\n'.join(lines)
 
