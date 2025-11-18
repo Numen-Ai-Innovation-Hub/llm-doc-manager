@@ -18,7 +18,7 @@ logger = get_logger(__name__)
 try:
     from dotenv import load_dotenv
     # Get the tool's root directory (parent of llm_doc_manager package)
-    TOOL_ROOT = Path(__file__).parent.parent
+    TOOL_ROOT = Path(__file__).parent.parent.parent
     ENV_FILE = TOOL_ROOT / ".env"
     if ENV_FILE.exists():
         load_dotenv(ENV_FILE)
