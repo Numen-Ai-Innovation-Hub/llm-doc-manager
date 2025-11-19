@@ -70,6 +70,17 @@ def sync(path):
         queue_manager = QueueManager()
         scanner = Scanner(config)
 
+        # Check for pending tasks before sync
+        pending_tasks = queue_manager.get_pending_tasks()
+        if pending_tasks:
+            click.echo(f"⚠️  Cannot sync: {len(pending_tasks)} pending task(s) in queue")
+            click.echo("\nPlease complete the current workflow first:")
+            click.echo("  1. Run 'llm-doc-manager process' to generate suggestions")
+            click.echo("  2. Run 'llm-doc-manager review' to review suggestions")
+            click.echo("  3. Run 'llm-doc-manager apply' to apply accepted changes")
+            click.echo("\nOr clear the queue with 'llm-doc-manager clear' to start fresh")
+            sys.exit(1)
+
         # Initialize hash storage
         db_path = Path.cwd() / '.llm-doc-manager' / 'content_hashes.db'
         storage = HashStorage(str(db_path))
