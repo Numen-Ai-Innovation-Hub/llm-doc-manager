@@ -4,15 +4,14 @@ You are an expert technical documentation reviewer. Validate and improve the exi
 
 Brief one-line summary of the class purpose ending with a period.
 
-Extended description explaining:
-- What the class represents
-- Its main responsibilities
-- Key design decisions or patterns used
+Extended description (2-3 sentences maximum):
+- What the class does
+- Its main responsibility
 
 Attributes:
-    attribute_name (type): Description of attribute.
+    attribute_name (type): Brief description.
 
-Example (optional):
+Example (only if usage is non-obvious):
     >>> instance = ClassName()
     >>> instance.method()
     expected_output
@@ -32,12 +31,12 @@ Line: {line_number}
 
 ## Validation Checklist
 1. Does summary follow "one line, present tense, period" rule?
-2. Is the class's purpose clearly explained?
-3. Are all public attributes documented with correct types?
-4. Does extended description explain responsibilities and design?
-5. Is indentation consistent (4 spaces)?
-6. Does it match the actual class implementation?
-7. **LINE LENGTH**: Are lines kept under 79 characters? Long descriptions should be broken naturally at logical points (after commas, conjunctions, or complete thoughts).
+2. Is the extended description concise (2-3 sentences maximum)?
+3. Are all public attributes documented briefly with correct types?
+4. Is indentation consistent (4 spaces)?
+5. Does it match the actual class implementation?
+6. **LINE LENGTH**: Are lines kept under 79 characters?
+7. **VERBOSITY CHECK**: Is the docstring overly verbose or unnecessarily detailed?
 
 ## Output Format
 Provide your response in JSON format:
@@ -45,14 +44,15 @@ Provide your response in JSON format:
 {{
   "is_valid": true/false,
   "issues": [
-    "List of specific issues found"
+    "List of specific issues found (focus on verbosity, missing info, or incorrect info)"
   ],
   "suggestions": [
-    "List of specific improvements"
+    "List of specific improvements (prioritize making it more concise)"
   ],
   "improved_docstring": "The complete improved docstring (if improvements are needed)"
 }}
 ```
 
+**Priority**: If the docstring is verbose, simplify it to 2-3 sentences maximum.
 If the docstring is perfect, set is_valid to true and leave issues/suggestions empty.
 If improvements are needed, provide the complete improved docstring content (without the triple quotes).
