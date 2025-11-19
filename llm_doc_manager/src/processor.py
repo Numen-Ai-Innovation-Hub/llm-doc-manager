@@ -343,14 +343,20 @@ class Processor:
                     return None, True
 
                 # Extract improved content based on task type
+                # Priority order: check specific fields first, then fallbacks
                 if task.task_type == "validate_docstring" and "improved_docstring" in parsed:
                     return parsed["improved_docstring"], False
                 elif task.task_type == "validate_class" and "improved_docstring" in parsed:
                     return parsed["improved_docstring"], False
-                elif task.task_type in ["validate_comment", "generate_comment"] and "comment" in parsed:
+                elif task.task_type == "validate_comment":
+                    # Check improved_comment first (validate), then comment (fallback)
+                    if "improved_comment" in parsed:
+                        return parsed["improved_comment"], False
+                    elif "comment" in parsed:
+                        return parsed["comment"], False
+                elif task.task_type == "generate_comment" and "comment" in parsed:
+                    # Generate only uses "comment" field
                     return parsed["comment"], False
-                elif task.task_type == "validate_comment" and "improved_comment" in parsed:
-                    return parsed["improved_comment"], False
 
             except (json.JSONDecodeError, KeyError, ValueError):
                 # If parsing fails, return full response as suggestion

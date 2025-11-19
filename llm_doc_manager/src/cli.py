@@ -247,20 +247,33 @@ def review():
         # Get completed tasks
         completed = queue_manager.get_tasks_by_status(TaskStatus.COMPLETED)
 
-        if not completed:
-            click.echo("No suggestions to review. Run 'llm-doc-manager process' first.")
+        # Filter to only show tasks with suggestions (is_valid=false from LLM)
+        # Tasks with suggestion=None are already valid and don't need review
+        tasks_to_review = [task for task in completed if task.suggestion is not None]
+
+        if not tasks_to_review:
+            if completed:
+                # All tasks are valid (is_valid=true) - nothing to review!
+                click.echo(f"✓ All {len(completed)} task(s) are already valid!")
+                click.echo("No changes needed. Documentation is up to date.")
+            else:
+                click.echo("No suggestions to review. Run 'llm-doc-manager process' first.")
             return
 
-        click.echo(f"📋 Reviewing {len(completed)} suggestion(s)\n")
+        # Show count of filtered tasks
+        if len(tasks_to_review) < len(completed):
+            click.echo(f"📋 Reviewing {len(tasks_to_review)} suggestion(s) ({len(completed) - len(tasks_to_review)} already valid)\n")
+        else:
+            click.echo(f"📋 Reviewing {len(tasks_to_review)} suggestion(s)\n")
 
         accepted = []
         skipped = []
         dismissed = []
 
-        for i, task in enumerate(completed, 1):
+        for i, task in enumerate(tasks_to_review, 1):
             click.echo(f"{'='*60}")
             # Build header
-            click.echo(f"[{i}/{len(completed)}] {task.file_path}:{task.line_number}")
+            click.echo(f"[{i}/{len(tasks_to_review)}] {task.file_path}:{task.line_number}")
             click.echo(f"Type: {task.task_type}")
             if task.scope_name:
                 click.echo(f"Name: {task.scope_name}")

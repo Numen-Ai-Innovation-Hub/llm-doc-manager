@@ -320,6 +320,9 @@ class Applier:
         """
         Replace or insert an inline comment.
 
+        IMPORTANT: Removes ALL existing comments between @llm-comm-start and
+        @llm-comm-end markers, then inserts the new comment.
+
         Args:
             lines: File lines (0-indexed array)
             line_number: EXTERNAL (1-indexed) line number where @llm-comm-start marker is
@@ -340,22 +343,47 @@ class Applier:
             )
 
         # Convert EXTERNAL (1-indexed) to INTERNAL (0-indexed)
-        marker_line_idx = line_number - 1  # INTERNAL: Convert to 0-indexed
+        marker_start_idx = line_number - 1  # INTERNAL: Convert to 0-indexed
 
-        # Find the code line (should be right after the marker)
+        # Find @llm-comm-end marker
+        marker_end_idx = None
+        for i in range(marker_start_idx + 1, min(len(lines), marker_start_idx + 50)):
+            if lines[i].strip().startswith('# @llm-comm-end'):
+                marker_end_idx = i
+                break
+
+        # Find the code line (first non-comment, non-empty line after start marker)
         code_line_idx = None
-        for i in range(marker_line_idx + 1, min(len(lines), marker_line_idx + 10)):
+        search_end = marker_end_idx if marker_end_idx else min(len(lines), marker_start_idx + 50)
+
+        for i in range(marker_start_idx + 1, search_end):
             line = lines[i].strip()
-            # Skip empty lines and end marker
+            # Skip empty lines, markers, and comments
             if line and not line.startswith('#'):
                 code_line_idx = i
                 break
 
         if code_line_idx is None:
             # Fallback: assume code is right after marker
-            code_line_idx = marker_line_idx + 1
+            code_line_idx = marker_start_idx + 1
 
-        # Get indentation from the code line
+        # STEP 1: Remove ALL comment lines between markers (but keep markers and code)
+        # Find all comment lines between start marker and code line
+        comments_to_remove = []
+        for i in range(marker_start_idx + 1, code_line_idx):
+            line = lines[i].strip()
+            # Remove old comments (lines starting with # but NOT markers)
+            if line.startswith('#') and not line.startswith('# @llm-comm-'):
+                comments_to_remove.append(i)
+
+        # Remove old comments in reverse order (to maintain indices)
+        for idx in reversed(comments_to_remove):
+            del lines[idx]
+
+        # Recalculate code_line_idx after deletions
+        code_line_idx -= len(comments_to_remove)
+
+        # STEP 2: Get indentation from the code line
         indent = ""
         if code_line_idx < len(lines):
             code_line_text = lines[code_line_idx]
@@ -365,10 +393,8 @@ class Applier:
                 else:
                     break
 
-        # Format comment
+        # STEP 3: Format and insert new comment above the code line
         formatted_comment = f"{indent}# {suggested_text.strip()}"
-
-        # Insert comment above the code line
         lines.insert(code_line_idx, formatted_comment)
 
         # NOTE: Markers are preserved in the code for hash-based tracking.
