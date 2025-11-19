@@ -29,6 +29,11 @@ from .docstring_handler import find_docstring_location
 from ..src.queue import TaskPriority
 
 
+class MarkerValidationError(Exception):
+    """Raised when a marker block is malformed or missing required elements."""
+    pass
+
+
 class MarkerType(Enum):
     """Types of documentation markers."""
     DOCSTRING = "docstring"  # Method/function docstrings (@llm-doc)
@@ -192,6 +197,9 @@ class MarkerDetector:
 
         Returns:
             Dictionary with analysis results
+
+        Raises:
+            MarkerValidationError: If no function definition is found
         """
         result = {
             'has_docstring': False,
@@ -213,7 +221,10 @@ class MarkerDetector:
                 break
 
         if func_line_idx is None:
-            return result
+            raise MarkerValidationError(
+                "@llm-doc-start marker requires a function definition (def). "
+                "Found block without a function. Use @llm-comm-start for code comments instead."
+            )
 
         result['function_line_idx'] = func_line_idx
 
@@ -289,6 +300,9 @@ class MarkerDetector:
 
         Returns:
             Dictionary with analysis results
+
+        Raises:
+            MarkerValidationError: If no class definition is found
         """
         result = {
             'has_docstring': False,
@@ -309,7 +323,10 @@ class MarkerDetector:
                 break
 
         if def_line_idx is None:
-            return result
+            raise MarkerValidationError(
+                "@llm-class-start marker requires a class definition (class). "
+                "Found block without a class. Use @llm-comm-start for code comments instead."
+            )
 
         # Extract docstring using shared method
         docstring = self._extract_docstring(block_lines, def_line_idx)

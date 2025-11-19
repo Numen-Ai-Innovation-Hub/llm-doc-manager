@@ -108,16 +108,17 @@ class ContentHasher:
         for block in blocks:
             # Determine scope type and name based on marker type
             # Note: function_name is used for both functions AND classes
+            # With strict validation in marker_detector, function_name is always set
             if block.marker_type.value == 'class_doc':
                 scope_type = 'CLASS'
-                scope_name = block.function_name or 'UnknownClass'
+                scope_name = block.function_name  # Always set by validation
             elif block.marker_type.value == 'docstring':
                 scope_type = 'METHOD'
-                scope_name = block.function_name or 'UnknownMethod'
+                scope_name = block.function_name  # Always set by validation
             else:
-                # Other marker types treated as method-level
+                # Comment blocks - always have block_{line} naming
                 scope_type = 'METHOD'
-                scope_name = block.function_name or f"block_{block.start_line}"
+                scope_name = block.function_name  # Always set to f"block_{start_line}"
 
             # Calculate hash of block content
             content_hash = ContentHasher.calculate_hash(block.full_code)
