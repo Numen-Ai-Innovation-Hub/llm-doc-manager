@@ -177,7 +177,7 @@ class MarkerDetector:
                     full_code=full_code,
                     has_docstring=analysis['has_docstring'],
                     current_docstring=analysis['docstring'],
-                    function_name=analysis.get('function_name'),
+                    function_name=analysis['function_name'],  # Always present after validation
                     marker_type=marker_type
                 ))
 
@@ -224,6 +224,13 @@ class MarkerDetector:
             raise MarkerValidationError(
                 "@llm-doc-start marker requires a function definition (def). "
                 "Found block without a function. Use @llm-comm-start for code comments instead."
+            )
+
+        # Validate that function name was successfully extracted
+        if result['function_name'] is None:
+            raise MarkerValidationError(
+                "@llm-doc-start found 'def' but could not extract function name. "
+                "Ensure function has a valid Python identifier (letters, digits, underscore only)."
             )
 
         result['function_line_idx'] = func_line_idx
@@ -326,6 +333,13 @@ class MarkerDetector:
             raise MarkerValidationError(
                 "@llm-class-start marker requires a class definition (class). "
                 "Found block without a class. Use @llm-comm-start for code comments instead."
+            )
+
+        # Validate that class name was successfully extracted
+        if result['function_name'] is None:
+            raise MarkerValidationError(
+                "@llm-class-start found 'class' but could not extract class name. "
+                "Ensure class has a valid Python identifier (letters, digits, underscore only)."
             )
 
         # Extract docstring using shared method
