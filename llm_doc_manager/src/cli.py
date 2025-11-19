@@ -150,15 +150,18 @@ def sync(path):
                         task_type=get_task_type_from_marker(block.marker_type.value),
                         marker_text=block.marker_type.value,
                         context=block.full_code,
-                        priority=1
+                        priority=1,
+                        scope_name=block.function_name
                     )
                     queue_manager.add_task(task)
                     tasks_created += 1
 
             elif change_report.scope == 'CLASS':
-                click.echo(f"  🔹 {file_path} - {change_report.reason}")
-                # Create tasks for changed/new classes
+                # Show specific class names in message
                 changed_names = set(change_report.changed_items + change_report.new_items)
+                names_str = ', '.join(sorted(changed_names))
+                click.echo(f"  🔹 {file_path} - {change_report.reason}: {names_str}")
+                # Create tasks for changed/new classes
                 for block in blocks:
                     # function_name is used for both functions AND classes
                     block_name = block.function_name
@@ -169,7 +172,8 @@ def sync(path):
                             task_type=get_task_type_from_marker(block.marker_type.value),
                             marker_text=block.marker_type.value,
                             context=block.full_code,
-                            priority=2
+                            priority=2,
+                            scope_name=block.function_name
                         )
                         queue_manager.add_task(task)
                         tasks_created += 1
@@ -177,9 +181,11 @@ def sync(path):
                         token_savings += 500
 
             elif change_report.scope == 'METHOD':
-                click.echo(f"  🔸 {file_path} - {change_report.reason}")
-                # Create tasks for changed/new methods
+                # Show specific method names in message
                 changed_names = set(change_report.changed_items + change_report.new_items)
+                names_str = ', '.join(sorted(changed_names))
+                click.echo(f"  🔸 {file_path} - {change_report.reason}: {names_str}")
+                # Create tasks for changed/new methods
                 for block in blocks:
                     # function_name is used for both functions AND classes
                     block_name = block.function_name
@@ -190,7 +196,8 @@ def sync(path):
                             task_type=get_task_type_from_marker(block.marker_type.value),
                             marker_text=block.marker_type.value,
                             context=block.full_code,
-                            priority=3
+                            priority=3,
+                            scope_name=block.function_name
                         )
                         queue_manager.add_task(task)
                         tasks_created += 1
@@ -307,7 +314,13 @@ def review():
 
         for i, task in enumerate(completed, 1):
             click.echo(f"{'='*60}")
-            click.echo(f"[{i}/{len(completed)}] {task.file_path}:{task.line_number}")
+            # Build header with scope_name if available
+            header = f"[{i}/{len(completed)}] {task.file_path}:{task.line_number}"
+            if task.scope_name:
+                # Determine if it's a class or method based on task_type
+                scope_label = "Class" if "class" in task.task_type else "Method"
+                header += f" - {scope_label}: {task.scope_name}"
+            click.echo(header)
             click.echo(f"Type: {task.task_type}")
             click.echo(f"{'='*60}")
 

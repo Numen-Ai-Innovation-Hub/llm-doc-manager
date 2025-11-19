@@ -55,6 +55,7 @@ class DocTask:
     error_message: Optional[str] = None
     suggestion: Optional[str] = None  # LLM-generated suggestion
     accepted: bool = False  # Whether user accepted the suggestion
+    scope_name: Optional[str] = None  # Name of class/method being documented
 
     def to_dict(self) -> Dict[str, Any]:
         """Convert to dictionary."""
@@ -105,7 +106,8 @@ class QueueManager:
                 updated_at TEXT DEFAULT CURRENT_TIMESTAMP,
                 error_message TEXT,
                 suggestion TEXT,
-                accepted INTEGER DEFAULT 0
+                accepted INTEGER DEFAULT 0,
+                scope_name TEXT
             )
         """)
 
@@ -120,6 +122,13 @@ class QueueManager:
         cursor.execute("""
             CREATE INDEX IF NOT EXISTS idx_accepted ON tasks(accepted)
         """)
+
+        # Migration: Add scope_name column if it doesn't exist
+        try:
+            cursor.execute("ALTER TABLE tasks ADD COLUMN scope_name TEXT")
+        except sqlite3.OperationalError:
+            # Column already exists
+            pass
 
         conn.commit()
         conn.close()
