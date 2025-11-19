@@ -11,7 +11,7 @@ from pathlib import Path
 from typing import Optional
 
 from .config import Config, ConfigManager
-from .queue import QueueManager, TaskStatus, DocTask
+from .queue import QueueManager, TaskStatus, DocTask, TaskPriority
 from .scanner import Scanner
 from .processor import Processor, ProcessResult
 from .applier import Applier, Suggestion
@@ -116,106 +116,49 @@ def sync(path):
             for error in scan_result.errors[:5]:
                 click.echo(f"  - {error}")
 
-        # Step 2: Detect changes using hash comparison
-        click.echo("\n🔄 Detecting changes using content hashes...")
+        # Step 2: Detect changes using file-level hash comparison
+        click.echo("\n🔄 Detecting changes using file-level hashes...")
 
         tasks_created = 0
         files_with_changes = 0
-        token_savings = 0
+        files_unchanged = 0
 
         for file_path, blocks in scan_result.file_blocks.items():
             if not blocks:
                 continue
 
-            # Detect changes (returns tuple: report and current_hashes)
-            change_report, current_hashes = detector.detect_changes(file_path, blocks)
-
-            if change_report.scope == 'NONE':
+            # Check if file changed
+            if not detector.file_changed(file_path):
                 # No changes - don't create tasks
-                click.echo(f"  ⊘ {file_path} - {change_report.reason}")
-                # Estimate token savings (assuming ~500 tokens per block)
-                token_savings += len(blocks) * 500
+                click.echo(f"  ⊘ {file_path} - No changes detected")
+                files_unchanged += 1
                 continue
 
             files_with_changes += 1
+            click.echo(f"  📝 {file_path} - File modified, processing all {len(blocks)} block(s)")
 
-            # Display change summary
-            if change_report.scope == 'FILE':
-                click.echo(f"  📄 {file_path} - New file, all blocks will be processed")
-                # Create tasks for all blocks
-                for block in blocks:
-                    task = DocTask(
-                        file_path=file_path,
-                        line_number=block.start_line,
-                        task_type=get_task_type_from_marker(block.marker_type.value),
-                        marker_text=block.marker_type.value,
-                        context=block.full_code,
-                        priority=1,
-                        scope_name=block.function_name
-                    )
-                    queue_manager.add_task(task)
-                    tasks_created += 1
+            # Create tasks for ALL blocks in changed file
+            for block in blocks:
+                task = DocTask(
+                    file_path=file_path,
+                    line_number=block.start_line,
+                    task_type=get_task_type_from_marker(block.marker_type.value),
+                    marker_text=block.marker_type.value,
+                    context=block.full_code,
+                    priority=TaskPriority.HIGH.value,  # All tasks same priority
+                    scope_name=block.function_name
+                )
+                queue_manager.add_task(task)
+                tasks_created += 1
 
-            elif change_report.scope == 'CLASS':
-                # Show specific class names in message
-                changed_names = set(change_report.changed_items + change_report.new_items)
-                click.echo(f"  🔹 {file_path} - {change_report.reason}:")
-                for name in sorted(changed_names):
-                    click.echo(f"     {name}")
-                # Create tasks for changed/new classes
-                for block in blocks:
-                    # function_name is used for both functions AND classes
-                    block_name = block.function_name
-                    if block_name in changed_names:
-                        task = DocTask(
-                            file_path=file_path,
-                            line_number=block.start_line,
-                            task_type=get_task_type_from_marker(block.marker_type.value),
-                            marker_text=block.marker_type.value,
-                            context=block.full_code,
-                            priority=2,
-                            scope_name=block.function_name
-                        )
-                        queue_manager.add_task(task)
-                        tasks_created += 1
-                    else:
-                        token_savings += 500
-
-            elif change_report.scope == 'METHOD':
-                # Show specific method names in message
-                changed_names = set(change_report.changed_items + change_report.new_items)
-                click.echo(f"  🔸 {file_path} - {change_report.reason}:")
-                for name in sorted(changed_names):
-                    click.echo(f"     {name}")
-                # Create tasks for changed/new methods
-                for block in blocks:
-                    # function_name is used for both functions AND classes
-                    block_name = block.function_name
-                    if block_name in changed_names:
-                        task = DocTask(
-                            file_path=file_path,
-                            line_number=block.start_line,
-                            task_type=get_task_type_from_marker(block.marker_type.value),
-                            marker_text=block.marker_type.value,
-                            context=block.full_code,
-                            priority=3,
-                            scope_name=block.function_name
-                        )
-                        queue_manager.add_task(task)
-                        tasks_created += 1
-                    else:
-                        token_savings += 500
-
-            # Update stored hashes after creating tasks (reuse calculated hashes)
-            detector.update_stored_hashes(file_path, current_hashes)
+            # Update stored hash for this file
+            detector.update_file_hash(file_path)
 
         # Display summary
         click.echo(f"\n✓ Sync complete!")
         click.echo(f"  Files with changes: {files_with_changes}/{scan_result.files_scanned}")
+        click.echo(f"  Files unchanged: {files_unchanged}")
         click.echo(f"  Tasks created: {tasks_created}")
-
-        if token_savings > 0:
-            click.echo(f"  💰 Estimated token savings: ~{token_savings:,} tokens (unchanged blocks)")
 
         if tasks_created > 0:
             click.echo(f"\nNext: Run 'llm-doc-manager process' to generate suggestions")
