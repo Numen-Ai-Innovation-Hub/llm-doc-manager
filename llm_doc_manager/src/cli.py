@@ -489,6 +489,7 @@ def rollback(file_path):
 
         if applier.rollback(file_path):
             click.echo(f"✓ Rolled back: {file_path}")
+            click.echo("⚠ Run 'llm-doc-manager sync' to update content hashes")
         else:
             click.echo(f"✗ Could not rollback: {file_path}")
 

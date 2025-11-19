@@ -240,7 +240,7 @@ class ChangeDetector:
         # Store new hashes
         for hash_obj in current_hashes['file']:
             self.storage.store_hash(
-                file_path=hash_obj.scope_name,
+                file_path=file_path,
                 scope_type=hash_obj.scope_type,
                 scope_name=hash_obj.scope_name,
                 content_hash=hash_obj.content_hash,
