@@ -159,8 +159,9 @@ def sync(path):
             elif change_report.scope == 'CLASS':
                 # Show specific class names in message
                 changed_names = set(change_report.changed_items + change_report.new_items)
-                names_str = ', '.join(sorted(changed_names))
-                click.echo(f"  🔹 {file_path} - {change_report.reason}: {names_str}")
+                click.echo(f"  🔹 {file_path} - {change_report.reason}:")
+                for name in sorted(changed_names):
+                    click.echo(f"     {name}")
                 # Create tasks for changed/new classes
                 for block in blocks:
                     # function_name is used for both functions AND classes
@@ -183,8 +184,9 @@ def sync(path):
             elif change_report.scope == 'METHOD':
                 # Show specific method names in message
                 changed_names = set(change_report.changed_items + change_report.new_items)
-                names_str = ', '.join(sorted(changed_names))
-                click.echo(f"  🔸 {file_path} - {change_report.reason}: {names_str}")
+                click.echo(f"  🔸 {file_path} - {change_report.reason}:")
+                for name in sorted(changed_names):
+                    click.echo(f"     {name}")
                 # Create tasks for changed/new methods
                 for block in blocks:
                     # function_name is used for both functions AND classes
@@ -314,14 +316,11 @@ def review():
 
         for i, task in enumerate(completed, 1):
             click.echo(f"{'='*60}")
-            # Build header with scope_name if available
-            header = f"[{i}/{len(completed)}] {task.file_path}:{task.line_number}"
-            if task.scope_name:
-                # Determine if it's a class or method based on task_type
-                scope_label = "Class" if "class" in task.task_type else "Method"
-                header += f" - {scope_label}: {task.scope_name}"
-            click.echo(header)
+            # Build header
+            click.echo(f"[{i}/{len(completed)}] {task.file_path}:{task.line_number}")
             click.echo(f"Type: {task.task_type}")
+            if task.scope_name:
+                click.echo(f"Name: {task.scope_name}")
             click.echo(f"{'='*60}")
 
             # Get suggestion from task (stored in database)
