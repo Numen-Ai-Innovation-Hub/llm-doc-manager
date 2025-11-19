@@ -163,7 +163,7 @@ class MarkerDetector:
                 elif marker_type == MarkerType.CLASS_DOC:
                     analysis = self._analyze_class_block(block_lines)
                 else:  # MarkerType.COMMENT
-                    analysis = self._analyze_comment_block(block_lines)
+                    analysis = self._analyze_comment_block(block_lines, start_line)
 
                 blocks.append(DetectedBlock(
                     file_path=file_path,
@@ -319,12 +319,13 @@ class MarkerDetector:
 
         return result
 
-    def _analyze_comment_block(self, block_lines: List[str]) -> Dict:
+    def _analyze_comment_block(self, block_lines: List[str], start_line: int) -> Dict:
         """
         Analyze a code comment block.
 
         Args:
             block_lines: Lines of code in the block
+            start_line: Starting line number of the block (1-indexed)
 
         Returns:
             Dictionary with analysis results
@@ -340,10 +341,12 @@ class MarkerDetector:
                 if comment_text:
                     existing_comments.append(comment_text)
 
+        # Generate consistent name for comment blocks using line number
+        # This ensures consistency with ContentHasher naming
         result = {
             'has_docstring': bool(existing_comments),
             'docstring': '\n'.join(existing_comments) if existing_comments else None,
-            'function_name': None
+            'function_name': f"block_{start_line}"
         }
 
         return result
