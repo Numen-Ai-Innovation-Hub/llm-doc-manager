@@ -111,6 +111,10 @@ class Processor:
         """
         Process a single documentation task.
 
+        Auto-validation logic:
+        - If LLM returns is_valid=true → mark as COMPLETED, no suggestion saved
+        - If LLM returns is_valid=false → save improved content as suggestion
+
         Args:
             task: Task to process
 
@@ -127,11 +131,17 @@ class Processor:
             # Call LLM
             response, tokens = self._call_llm(prompt)
 
-            # Parse response
-            suggestion = self._parse_response(response, task)
+            # Parse response (returns tuple: suggestion, is_valid)
+            suggestion, is_valid = self._parse_response(response, task)
 
-            # Save suggestion to database
-            self.queue_manager.update_suggestion(task.id, suggestion)
+            # Auto-validation filtering
+            if is_valid:
+                # Already valid - don't save suggestion, mark as completed
+                # This filters out tasks that don't need changes from review
+                self.queue_manager.update_suggestion(task.id, None)
+            else:
+                # Needs changes - save suggestion for review
+                self.queue_manager.update_suggestion(task.id, suggestion)
 
             # Update task status to completed
             self.queue_manager.update_task_status(task.id, TaskStatus.COMPLETED)
@@ -139,7 +149,7 @@ class Processor:
             return ProcessResult(
                 task_id=task.id,
                 success=True,
-                suggestion=suggestion,
+                suggestion=suggestion if not is_valid else None,
                 tokens_used=tokens
             )
 
@@ -293,16 +303,18 @@ class Processor:
         else:
             raise ValueError(f"Unsupported provider: {provider}")
 
-    def _parse_response(self, response: str, task: DocTask) -> str:
+    def _parse_response(self, response: str, task: DocTask) -> tuple[str, bool]:
         """
-        Parse LLM response.
+        Parse LLM response with auto-validation support.
 
         Args:
             response: Raw LLM response
             task: Original task
 
         Returns:
-            Parsed suggestion
+            Tuple of (suggestion, is_valid)
+            - suggestion: Improved content if is_valid=false, None otherwise
+            - is_valid: True if content is already valid, False if needs changes
         """
         # Try to parse as JSON first (for validation tasks and comment generation)
         if task.task_type.startswith("validate_") or task.task_type in ["generate_comment"]:
@@ -323,19 +335,27 @@ class Processor:
                 # Parse JSON
                 parsed = json.loads(cleaned)
 
-                # Extract the appropriate field based on task type
+                # Check for is_valid flag (validation tasks)
+                is_valid = parsed.get("is_valid", False)
+
+                # If valid, no suggestion needed
+                if is_valid:
+                    return None, True
+
+                # Extract improved content based on task type
                 if task.task_type == "validate_docstring" and "improved_docstring" in parsed:
-                    return parsed["improved_docstring"]
+                    return parsed["improved_docstring"], False
                 elif task.task_type == "validate_class" and "improved_docstring" in parsed:
-                    return parsed["improved_docstring"]
+                    return parsed["improved_docstring"], False
                 elif task.task_type in ["validate_comment", "generate_comment"] and "comment" in parsed:
-                    return parsed["comment"]
+                    return parsed["comment"], False
                 elif task.task_type == "validate_comment" and "improved_comment" in parsed:
-                    return parsed["improved_comment"]
+                    return parsed["improved_comment"], False
 
             except (json.JSONDecodeError, KeyError, ValueError):
-                # If parsing fails, return full response
+                # If parsing fails, return full response as suggestion
                 pass
 
-        # For generate tasks (docstring/class) or if JSON parsing fails, return as-is
-        return response.strip()
+        # For generate tasks (docstring/class) or if JSON parsing fails
+        # Generate tasks always need to be applied (is_valid=false)
+        return response.strip(), False

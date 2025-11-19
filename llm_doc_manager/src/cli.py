@@ -384,16 +384,8 @@ def apply():
             click.echo(f"\n🔄 Updating content hashes for {len(modified_files)} file(s)...")
             for file_path in modified_files:
                 try:
-                    # Re-scan the file to get updated blocks
-                    with open(file_path, 'r', encoding='utf-8') as f:
-                        content = f.read()
-
-                    blocks = scanner.marker_detector.detect_blocks(content, file_path)
-
-                    # Recalculate and update hashes
-                    from ..utils.content_hash import ContentHasher
-                    current_hashes = ContentHasher.calculate_all_hashes(file_path, blocks)
-                    detector.update_stored_hashes(file_path, current_hashes)
+                    # Update file hash after applying changes
+                    detector.update_file_hash(file_path)
 
                 except Exception as e:
                     click.echo(f"⚠ Warning: Could not update hashes for {file_path}: {e}")
