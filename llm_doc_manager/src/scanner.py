@@ -1,8 +1,8 @@
 """
 File scanner for detecting documentation markers.
 
-Scans project files to find markers that indicate where documentation
-needs to be validated, generated, or reviewed.
+Scans project files to find markers. Does NOT create tasks - tasks are
+created by the sync command after hash-based change detection.
 """
 
 import os
@@ -12,7 +12,6 @@ from typing import List, Optional, Set
 from dataclasses import dataclass
 
 from ..utils.marker_detector import MarkerDetector
-from .queue import DocTask, QueueManager
 from .config import Config
 from ..utils.marker_validator import MarkerValidator, ValidationIssue, ValidationLevel
 from ..utils.logger_setup import get_logger
@@ -24,30 +23,31 @@ logger = get_logger(__name__)
 class ScanResult:
     """Result of scanning operation."""
     files_scanned: int = 0
-    tasks_created: int = 0
+    blocks_found: int = 0
     errors: List[str] = None
     validation_issues: List[ValidationIssue] = None
+    file_blocks: dict = None  # file_path -> List[DetectedBlock]
 
     def __post_init__(self):
         if self.errors is None:
             self.errors = []
         if self.validation_issues is None:
             self.validation_issues = []
+        if self.file_blocks is None:
+            self.file_blocks = {}
 
 
 class Scanner:
     """Scans files for documentation markers."""
 
-    def __init__(self, config: Config, queue_manager: QueueManager):
+    def __init__(self, config: Config):
         """
         Initialize Scanner.
 
         Args:
             config: Configuration object
-            queue_manager: Queue manager for adding tasks
         """
         self.config = config
-        self.queue_manager = queue_manager
         self.marker_detector = MarkerDetector()
         self.validator = MarkerValidator()
 
@@ -59,7 +59,7 @@ class Scanner:
             paths: Optional list of paths to scan. If None, uses config paths.
 
         Returns:
-            ScanResult with statistics
+            ScanResult with marker blocks (no tasks created)
         """
         if paths is None:
             paths = self.config.scanning.paths
@@ -86,12 +86,14 @@ class Scanner:
                     result.files_scanned += 1
                     continue
 
-                # If only warnings, proceed but track them
-                tasks = self._scan_file(file_path, content)
-                for task in tasks:
-                    self.queue_manager.add_task(task)
-                    result.tasks_created += 1
+                # Detect marker blocks
+                blocks = self.marker_detector.detect_blocks(content, str(file_path))
+
+                # Store blocks for this file
+                result.file_blocks[str(file_path)] = blocks
+                result.blocks_found += len(blocks)
                 result.files_scanned += 1
+
             except Exception as e:
                 error_msg = f"Error scanning {file_path}: {str(e)}"
                 logger.error(error_msg)
@@ -197,72 +199,6 @@ class Scanner:
                 return True
         return False
 
-    def _scan_file(self, file_path: Path, content: str = None) -> List[DocTask]:
-        """
-        Scan a single file for markers.
-
-        Args:
-            file_path: Path to file
-            content: Optional pre-read content (for efficiency)
-
-        Returns:
-            List of DocTasks found in the file
-        """
-        if content is None:
-            try:
-                with open(file_path, 'r', encoding='utf-8') as f:
-                    content = f.read()
-            except UnicodeDecodeError:
-                # Try with different encoding
-                with open(file_path, 'r', encoding='latin-1') as f:
-                    content = f.read()
-
-        # Detect markers
-        markers = self.marker_detector.detect_markers(content, str(file_path))
-
-        # Convert markers to tasks
-        tasks = []
-        for marker in markers:
-            task = self._create_task_from_marker(marker, content, file_path)
-            if task:
-                tasks.append(task)
-
-        return tasks
-
-    def _create_task_from_marker(self, marker: dict, content: str,
-                                 file_path: Path) -> Optional[DocTask]:
-        """
-        Create a DocTask from a detected marker.
-
-        Args:
-            marker: Marker information from detector
-            content: Full file content
-            file_path: Path to the file
-
-        Returns:
-            DocTask or None
-        """
-        # Delimiter-based system ALWAYS provides full_code
-        context = marker['full_code']
-
-        # Task type is auto-determined by marker detection
-        task_type = marker['task_type']
-
-        # Determine priority
-        priority = marker['priority']
-
-        # Create task
-        task = DocTask(
-            file_path=str(file_path),
-            line_number=marker['line_number'],
-            task_type=task_type,
-            marker_text=marker.get('match_text', marker['line_content']),
-            context=context,
-            priority=priority
-        )
-
-        return task
-
     def scan_file(self, file_path: str) -> ScanResult:
         """
         Scan a single file.
@@ -271,6 +207,6 @@ class Scanner:
             file_path: Path to the file to scan
 
         Returns:
-            ScanResult
+            ScanResult with marker blocks
         """
         return self.scan(paths=[file_path])

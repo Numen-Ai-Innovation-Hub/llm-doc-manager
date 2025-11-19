@@ -11,10 +11,12 @@ from pathlib import Path
 from typing import Optional
 
 from .config import Config, ConfigManager
-from .queue import QueueManager, TaskStatus
+from .queue import QueueManager, TaskStatus, DocTask
 from .scanner import Scanner
 from .processor import Processor, ProcessResult
 from .applier import Applier, Suggestion
+from .hashing import HashStorage
+from .detector import ChangeDetector
 from ..utils.marker_validator import MarkerValidator, ValidationLevel
 
 
@@ -36,15 +38,25 @@ def init(overwrite):
         click.echo(f"  Config file: {config_manager.config_file}")
         click.echo("\nNext steps:")
         click.echo("  1. Edit config file to set your LLM API key")
-        click.echo("  2. Run 'llm-doc-manager scan' to find documentation tasks")
+        click.echo("  2. Run 'llm-doc-manager sync' to detect changes and create tasks")
     else:
         click.echo("Configuration already exists. Use --overwrite to replace it.")
 
 
 @cli.command()
 @click.option('--path', multiple=True, help='Paths to scan (can specify multiple)')
-def scan(path):
-    """Scan files for documentation markers."""
+def sync(path):
+    """Sync markers with hash-based change detection and create tasks."""
+
+    def get_task_type_from_marker(marker_type_value):
+        """Map marker type to processor task type."""
+        marker_to_task = {
+            'docstring': 'generate_docstring',
+            'class_doc': 'generate_class',
+            'comment': 'generate_comment'
+        }
+        return marker_to_task.get(marker_type_value, 'generate_docstring')
+
     try:
         # Load config
         config_manager = ConfigManager()
@@ -56,22 +68,28 @@ def scan(path):
 
         # Initialize components
         queue_manager = QueueManager()
-        scanner = Scanner(config, queue_manager)
+        scanner = Scanner(config)
 
-        # Perform scan
+        # Initialize hash storage
+        db_path = Path.cwd() / '.llm-doc-manager' / 'content_hashes.db'
+        storage = HashStorage(str(db_path))
+        detector = ChangeDetector(storage)
+
+        # Step 1: Scan for markers
         click.echo("🔍 Scanning project for documentation markers...")
-        result = scanner.scan()
+        scan_result = scanner.scan()
 
         # Display validation issues first (if any)
-        if result.validation_issues:
-            errors = [i for i in result.validation_issues if i.level == ValidationLevel.ERROR]
-            warnings = [i for i in result.validation_issues if i.level == ValidationLevel.WARNING]
+        if scan_result.validation_issues:
+            errors = [i for i in scan_result.validation_issues if i.level == ValidationLevel.ERROR]
+            warnings = [i for i in scan_result.validation_issues if i.level == ValidationLevel.WARNING]
 
             if errors:
                 click.echo(f"\n❌ Validation Errors ({len(errors)}):")
                 for issue in errors:
                     click.echo(f"  {issue}")
-                click.echo("\n⚠️  Fix these errors before processing. Tasks were NOT created for files with errors.")
+                click.echo("\n⚠️  Fix these errors before processing.")
+                sys.exit(1)
 
             if warnings:
                 click.echo(f"\n⚠️  Validation Warnings ({len(warnings)}):")
@@ -79,31 +97,116 @@ def scan(path):
                     click.echo(f"  {issue}")
                 click.echo("\n💡 Warnings don't block processing, but should be reviewed.")
 
-        # Display results
-        click.echo(f"\n✓ Scan complete!")
-        click.echo(f"  Files scanned: {result.files_scanned}")
-        click.echo(f"  Tasks created: {result.tasks_created}")
+        click.echo(f"  Files scanned: {scan_result.files_scanned}")
+        click.echo(f"  Blocks found: {scan_result.blocks_found}")
 
-        if result.errors:
-            click.echo(f"\n⚠ Scan errors: {len(result.errors)}")
-            for error in result.errors[:5]:  # Show first 5 errors
+        if scan_result.errors:
+            click.echo(f"\n⚠ Scan errors: {len(scan_result.errors)}")
+            for error in scan_result.errors[:5]:
                 click.echo(f"  - {error}")
 
-        # Check if scan was blocked by validation errors
-        validation_errors = [i for i in result.validation_issues if i.level == ValidationLevel.ERROR]
-        if validation_errors and result.tasks_created == 0:
-            click.echo("\n❌ No tasks created due to validation errors.")
-            click.echo("Fix the errors above and scan again.")
-            sys.exit(1)
+        # Step 2: Detect changes using hash comparison
+        click.echo("\n🔄 Detecting changes using content hashes...")
 
-        if result.tasks_created > 0:
+        tasks_created = 0
+        files_with_changes = 0
+        token_savings = 0
+
+        for file_path, blocks in scan_result.file_blocks.items():
+            if not blocks:
+                continue
+
+            # Detect changes (returns tuple: report and current_hashes)
+            change_report, current_hashes = detector.detect_changes(file_path, blocks)
+
+            if change_report.scope == 'NONE':
+                # No changes - don't create tasks
+                click.echo(f"  ⊘ {file_path} - {change_report.reason}")
+                # Estimate token savings (assuming ~500 tokens per block)
+                token_savings += len(blocks) * 500
+                continue
+
+            files_with_changes += 1
+
+            # Display change summary
+            if change_report.scope == 'FILE':
+                click.echo(f"  📄 {file_path} - New file, all blocks will be processed")
+                # Create tasks for all blocks
+                for block in blocks:
+                    task = DocTask(
+                        file_path=file_path,
+                        line_number=block.start_line,
+                        task_type=get_task_type_from_marker(block.marker_type.value),
+                        marker_text=block.marker_type.value,
+                        context=block.full_code,
+                        priority=1
+                    )
+                    queue_manager.add_task(task)
+                    tasks_created += 1
+
+            elif change_report.scope == 'CLASS':
+                click.echo(f"  🔹 {file_path} - {change_report.reason}")
+                # Create tasks for changed/new classes
+                changed_names = set(change_report.changed_items + change_report.new_items)
+                for block in blocks:
+                    # function_name is used for both functions AND classes
+                    block_name = block.function_name
+                    if block_name in changed_names:
+                        task = DocTask(
+                            file_path=file_path,
+                            line_number=block.start_line,
+                            task_type=get_task_type_from_marker(block.marker_type.value),
+                            marker_text=block.marker_type.value,
+                            context=block.full_code,
+                            priority=2
+                        )
+                        queue_manager.add_task(task)
+                        tasks_created += 1
+                    else:
+                        token_savings += 500
+
+            elif change_report.scope == 'METHOD':
+                click.echo(f"  🔸 {file_path} - {change_report.reason}")
+                # Create tasks for changed/new methods
+                changed_names = set(change_report.changed_items + change_report.new_items)
+                for block in blocks:
+                    # function_name is used for both functions AND classes
+                    block_name = block.function_name
+                    if block_name in changed_names:
+                        task = DocTask(
+                            file_path=file_path,
+                            line_number=block.start_line,
+                            task_type=get_task_type_from_marker(block.marker_type.value),
+                            marker_text=block.marker_type.value,
+                            context=block.full_code,
+                            priority=3
+                        )
+                        queue_manager.add_task(task)
+                        tasks_created += 1
+                    else:
+                        token_savings += 500
+
+            # Update stored hashes after creating tasks (reuse calculated hashes)
+            detector.update_stored_hashes(file_path, current_hashes)
+
+        # Display summary
+        click.echo(f"\n✓ Sync complete!")
+        click.echo(f"  Files with changes: {files_with_changes}/{scan_result.files_scanned}")
+        click.echo(f"  Tasks created: {tasks_created}")
+
+        if token_savings > 0:
+            click.echo(f"  💰 Estimated token savings: ~{token_savings:,} tokens (unchanged blocks)")
+
+        if tasks_created > 0:
             click.echo(f"\nNext: Run 'llm-doc-manager process' to generate suggestions")
         else:
-            click.echo("\nNo markers found. Add markers to your code and scan again.")
+            click.echo("\nNo changes detected. All documentation is up to date!")
 
     except Exception as e:
         click.echo(f"❌ Error: {e}", err=True)
+        traceback.print_exc()
         sys.exit(1)
+
 
 
 @cli.command()
@@ -131,7 +234,7 @@ def process(limit):
         pending = queue_manager.get_pending_tasks(limit=limit)
 
         if not pending:
-            click.echo("No pending tasks found. Run 'llm-doc-manager scan' first.")
+            click.echo("No pending tasks found. Run 'llm-doc-manager sync' first.")
             return
 
         click.echo(f"🤖 Processing {len(pending)} task(s)...\n")
@@ -199,11 +302,12 @@ def review():
 
             # Get suggestion from task (stored in database)
             if task.suggestion:
-                suggestion_text = task.suggestion
+                # Clean suggestion text (remove quotes if LLM included them)
+                suggestion_text = task.suggestion.strip().strip('"""').strip("'''").strip()
 
                 click.echo("\nSuggested change:")
                 click.echo("-" * 60)
-                click.echo(suggestion_text)  # Show full suggestion
+                click.echo(suggestion_text)  # Show cleaned suggestion
                 click.echo("-" * 60)
 
                 # Get user choice
@@ -258,6 +362,12 @@ def apply():
         # Initialize components
         queue_manager = QueueManager()
         applier = Applier(config, queue_manager)
+        scanner = Scanner(config)
+
+        # Initialize hash storage for updating after apply
+        db_path = Path.cwd() / '.llm-doc-manager' / 'content_hashes.db'
+        storage = HashStorage(str(db_path))
+        detector = ChangeDetector(storage)
 
         # Get accepted tasks from database
         accepted_tasks = queue_manager.get_accepted_tasks()
@@ -270,6 +380,7 @@ def apply():
 
         applied = 0
         failed = 0
+        modified_files = set()  # Track which files were modified
 
         for task in accepted_tasks:
             if not task.suggestion:
@@ -291,6 +402,7 @@ def apply():
             if applier.apply_suggestion(suggestion):
                 click.echo(f"✓ {task.file_path}:{task.line_number}")
                 applied += 1
+                modified_files.add(task.file_path)
                 # Auto-delete applied task from queue
                 queue_manager.delete_task(task.id)
             else:
@@ -300,6 +412,25 @@ def apply():
         click.echo(f"\n✓ Applied {applied} change(s)")
         if failed:
             click.echo(f"✗ Failed to apply {failed} change(s)")
+
+        # Update hashes for modified files to prevent re-detection
+        if modified_files:
+            click.echo(f"\n🔄 Updating content hashes for {len(modified_files)} file(s)...")
+            for file_path in modified_files:
+                try:
+                    # Re-scan the file to get updated blocks
+                    with open(file_path, 'r', encoding='utf-8') as f:
+                        content = f.read()
+
+                    blocks = scanner.marker_detector.detect_blocks(content, file_path)
+
+                    # Recalculate and update hashes
+                    from ..utils.content_hash import ContentHasher
+                    current_hashes = ContentHasher.calculate_all_hashes(file_path, blocks)
+                    detector.update_stored_hashes(file_path, current_hashes)
+
+                except Exception as e:
+                    click.echo(f"⚠ Warning: Could not update hashes for {file_path}: {e}")
 
         if config.output.backup:
             click.echo(f"\nBackups saved to: {config.output.backup_dir}")

@@ -200,8 +200,14 @@ class Processor:
 
         template_key = template_map.get(task_type)
         if not template_key:
-            # Fallback for unsupported task types
-            return f"Generate or validate documentation for:\n\n{task.context}"
+            # Raise exception for unsupported task types
+            valid_types = ', '.join(template_map.keys())
+            raise ValueError(
+                f"Unsupported task_type: '{task_type}'\n"
+                f"Valid task types are: {valid_types}\n"
+                f"This error indicates a mismatch between the task creator (cli.py) and processor.\n"
+                f"Check that cli.py is using one of the supported task types."
+            )
 
         template = self.templates.get(template_key, "")
 

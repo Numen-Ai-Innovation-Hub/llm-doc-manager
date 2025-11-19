@@ -1,6 +1,10 @@
 # Environment variables (contains API keys)
 .env
 
+# LLM Doc Manager
+.llm-doc-manager/
+*.db
+
 # Python
 __pycache__/
 *.py[cod]
