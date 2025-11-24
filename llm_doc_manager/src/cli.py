@@ -11,13 +11,13 @@ from pathlib import Path
 from typing import Optional
 
 from .config import Config, ConfigManager
-from .queue import QueueManager, TaskStatus, DocTask, TaskPriority
+from .queue import QueueManager, TaskStatus, TaskPriority
 from .scanner import Scanner
 from .processor import Processor, ProcessResult
 from .applier import Applier, Suggestion
 from .hashing import HashStorage
 from .detector import ChangeDetector
-from .constants import MARKER_VALUE_TO_TASK_TYPE, TASK_TYPE_LABELS
+from .constants import TASK_TYPE_LABELS
 from ..utils.marker_validator import MarkerValidator, ValidationLevel
 
 
@@ -188,21 +188,10 @@ def sync(path, force):
                 file_tasks = validator.create_tasks_from_validation(str(file_path), blocks)
                 tasks_created += file_tasks
             else:
-                # Create tasks only for changed blocks
-                for block in blocks:
-                    block_name = block.function_name
-                    if block_name in all_changed_names:
-                        task = DocTask(
-                            file_path=file_path,
-                            line_number=block.start_line,
-                            task_type=MARKER_VALUE_TO_TASK_TYPE.get(block.marker_type.value, 'generate_docstring'),
-                            marker_text=block.marker_type.value,
-                            context=block.full_code,
-                            priority=TaskPriority.HIGH.value if block.marker_type.value in ['docstring', 'class_doc'] else TaskPriority.MEDIUM.value,
-                            scope_name=block.function_name
-                        )
-                        queue_manager.add_task(task)
-                        tasks_created += 1
+                # Create tasks only for changed blocks (filter blocks first)
+                changed_blocks = [block for block in blocks if block.function_name in all_changed_names]
+                file_tasks = validator.create_tasks_from_validation(str(file_path), changed_blocks)
+                tasks_created += file_tasks
 
             # Calculate token savings for unchanged blocks
             for block in blocks:

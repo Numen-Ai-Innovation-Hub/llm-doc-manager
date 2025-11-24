@@ -378,7 +378,7 @@ class MarkerValidator:
 
         This method creates tasks for:
         - docstring markers: generate_docstring tasks (HIGH priority)
-        - class_doc markers: generate_docstring tasks (HIGH priority)
+        - class_doc markers: generate_class tasks (HIGH priority)
         - comment markers: generate_comment tasks (MEDIUM priority)
 
         Args:
