@@ -25,46 +25,22 @@ class StoredHash:
 class HashStorage:
     """Manages SQLite database for content hash storage."""
 
-    def __init__(self, db_path: str):
+    def __init__(self, db_path: Optional[str] = None):
         """
         Initialize hash storage.
 
         Args:
-            db_path: Path to SQLite database file
+            db_path: Path to SQLite database file. If None, uses default unified database.
         """
+        if db_path is None:
+            # Use unified database
+            db_path = str(Path.cwd() / '.llm-doc-manager' / 'llm_doc_manager.db')
+
         self.db_path = db_path
-        self._ensure_db_exists()
 
-    def _ensure_db_exists(self):
-        """Create database and tables if they don't exist."""
-        # Ensure directory exists
-        Path(self.db_path).parent.mkdir(parents=True, exist_ok=True)
-
-        conn = sqlite3.connect(self.db_path)
-        cursor = conn.cursor()
-
-        cursor.execute("""
-            CREATE TABLE IF NOT EXISTS content_hashes (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                file_path TEXT NOT NULL,
-                scope_type TEXT NOT NULL,
-                scope_name TEXT NOT NULL,
-                content_hash TEXT NOT NULL,
-                line_start INTEGER NOT NULL,
-                line_end INTEGER NOT NULL,
-                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                UNIQUE(file_path, scope_type, scope_name)
-            )
-        """)
-
-        # Create index for faster lookups
-        cursor.execute("""
-            CREATE INDEX IF NOT EXISTS idx_file_path
-            ON content_hashes(file_path)
-        """)
-
-        conn.commit()
-        conn.close()
+        # Initialize unified database (creates all tables including content_hashes)
+        from .database import DatabaseManager
+        DatabaseManager(db_path=self.db_path)
 
     def get_hash(
         self,

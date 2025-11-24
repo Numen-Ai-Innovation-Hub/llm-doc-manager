@@ -147,17 +147,17 @@ class ConfigManager:
         Returns:
             True if config was created/updated, False otherwise
         """
-        if self.config_dir.exists() and not overwrite:
+        # Check if config FILE exists, not just directory
+        if self.config_file.exists() and not overwrite:
             logger.info(f"Configuration already exists at: {self.config_file}")
             return False
 
-        # If overwrite is True and directory exists, delete it completely
-        if overwrite and self.config_dir.exists():
-            import shutil
-            shutil.rmtree(self.config_dir)
-            logger.info(f"Removed existing configuration directory")
+        # If overwrite is True and config file exists, remove it
+        if overwrite and self.config_file.exists():
+            self.config_file.unlink()
+            logger.info(f"Removed existing configuration file")
 
-        # Create fresh directory structure
+        # Create directory structure if needed
         self.config_dir.mkdir(parents=True, exist_ok=True)
 
         default_config = Config()
@@ -248,9 +248,18 @@ class ConfigManager:
 
         try:
             import shutil
+            import logging
+
+            # Close all logging handlers to release file locks (Windows issue)
+            root_logger = logging.getLogger('llm_doc_manager')
+            for handler in root_logger.handlers[:]:
+                handler.close()
+                root_logger.removeHandler(handler)
+
+            # Now delete the directory
             shutil.rmtree(self.config_dir)
-            logger.info(f"Configuration directory removed: {self.config_dir}")
             return True
         except Exception as e:
-            logger.error(f"Error removing configuration: {e}")
+            # Can't log here because logger is closed
+            print(f"Error removing configuration: {e}")
             return False

@@ -82,7 +82,7 @@ def sync(path):
             sys.exit(1)
 
         # Initialize hash storage
-        db_path = Path.cwd() / '.llm-doc-manager' / 'content_hashes.db'
+        db_path = Path.cwd() / '.llm-doc-manager' / 'llm_doc_manager.db'
         storage = HashStorage(str(db_path))
         detector = ChangeDetector(storage)
 
@@ -404,7 +404,7 @@ def apply():
         scanner = Scanner(config)
 
         # Initialize hash storage for updating after apply
-        db_path = Path.cwd() / '.llm-doc-manager' / 'content_hashes.db'
+        db_path = Path.cwd() / '.llm-doc-manager' / 'llm_doc_manager.db'
         storage = HashStorage(str(db_path))
         detector = ChangeDetector(storage)
 
@@ -549,6 +549,8 @@ def cleanup():
                 click.echo("\nYou can now safely uninstall the package:")
                 click.echo("  pip uninstall llm-doc-manager -y")
             else:
+                click.echo("✗ Cleanup failed - configuration directory not found or could not be deleted")
+                click.echo(f"  Directory: {config_manager.config_dir}")
                 sys.exit(1)
 
     except Exception as e:

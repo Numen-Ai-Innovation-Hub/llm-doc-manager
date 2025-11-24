@@ -78,60 +78,17 @@ class QueueManager:
             db_path: Path to SQLite database file. If None, uses default location.
         """
         if db_path is None:
-            db_path = Path.cwd() / ".llm-doc-manager" / "queue.db"
+            # Use unified database
+            db_path = Path.cwd() / ".llm-doc-manager" / "llm_doc_manager.db"
         else:
             db_path = Path(db_path)
 
         db_path.parent.mkdir(parents=True, exist_ok=True)
         self.db_path = str(db_path)
-        self._init_database()
 
-    def _init_database(self):
-        """Initialize the database schema."""
-        conn = sqlite3.connect(self.db_path)
-        conn.row_factory = sqlite3.Row
-        cursor = conn.cursor()
-
-        cursor.execute("""
-            CREATE TABLE IF NOT EXISTS tasks (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                file_path TEXT NOT NULL,
-                line_number INTEGER NOT NULL,
-                task_type TEXT NOT NULL,
-                marker_text TEXT,
-                context TEXT,
-                priority INTEGER DEFAULT 5,
-                status TEXT DEFAULT 'pending',
-                created_at TEXT DEFAULT CURRENT_TIMESTAMP,
-                updated_at TEXT DEFAULT CURRENT_TIMESTAMP,
-                error_message TEXT,
-                suggestion TEXT,
-                accepted INTEGER DEFAULT 0,
-                scope_name TEXT
-            )
-        """)
-
-        cursor.execute("""
-            CREATE INDEX IF NOT EXISTS idx_status ON tasks(status)
-        """)
-
-        cursor.execute("""
-            CREATE INDEX IF NOT EXISTS idx_file_path ON tasks(file_path)
-        """)
-
-        cursor.execute("""
-            CREATE INDEX IF NOT EXISTS idx_accepted ON tasks(accepted)
-        """)
-
-        # Migration: Add scope_name column if it doesn't exist
-        try:
-            cursor.execute("ALTER TABLE tasks ADD COLUMN scope_name TEXT")
-        except sqlite3.OperationalError:
-            # Column already exists
-            pass
-
-        conn.commit()
-        conn.close()
+        # Initialize unified database (creates all tables including documentation_tasks)
+        from .database import DatabaseManager
+        DatabaseManager(db_path=self.db_path)
 
     def add_task(self, task: DocTask) -> int:
         """
@@ -153,7 +110,7 @@ class QueueManager:
 
         columns = ', '.join(task_dict.keys())
         placeholders = ', '.join(['?' for _ in task_dict])
-        query = f"INSERT INTO tasks ({columns}) VALUES ({placeholders})"
+        query = f"INSERT INTO documentation_tasks ({columns}) VALUES ({placeholders})"
 
         cursor.execute(query, list(task_dict.values()))
         task_id = cursor.lastrowid
@@ -177,7 +134,7 @@ class QueueManager:
         conn.row_factory = sqlite3.Row
         cursor = conn.cursor()
 
-        cursor.execute("SELECT * FROM tasks WHERE id = ?", (task_id,))
+        cursor.execute("SELECT * FROM documentation_tasks WHERE id = ?", (task_id,))
         row = cursor.fetchone()
 
         conn.close()
@@ -201,7 +158,7 @@ class QueueManager:
         cursor = conn.cursor()
 
         query = """
-            SELECT * FROM tasks
+            SELECT * FROM documentation_tasks
             WHERE status = ?
             ORDER BY priority DESC, created_at ASC
         """
@@ -229,7 +186,7 @@ class QueueManager:
         cursor = conn.cursor()
 
         cursor.execute("""
-            UPDATE tasks
+            UPDATE documentation_tasks
             SET status = ?, updated_at = ?, error_message = ?
             WHERE id = ?
         """, (status.value, datetime.now().isoformat(), error_message, task_id))
@@ -249,7 +206,7 @@ class QueueManager:
 
         cursor.execute("""
             SELECT status, COUNT(*) as count
-            FROM tasks
+            FROM documentation_tasks
             GROUP BY status
         """)
 
@@ -265,7 +222,7 @@ class QueueManager:
         conn = sqlite3.connect(self.db_path)
         cursor = conn.cursor()
 
-        cursor.execute("DELETE FROM tasks")
+        cursor.execute("DELETE FROM documentation_tasks")
 
         conn.commit()
         conn.close()
@@ -285,7 +242,7 @@ class QueueManager:
         cursor = conn.cursor()
 
         cursor.execute("""
-            SELECT * FROM tasks
+            SELECT * FROM documentation_tasks
             WHERE file_path = ?
             ORDER BY line_number ASC
         """, (file_path,))
@@ -310,7 +267,7 @@ class QueueManager:
         cursor = conn.cursor()
 
         cursor.execute("""
-            SELECT * FROM tasks
+            SELECT * FROM documentation_tasks
             WHERE status = ?
             ORDER BY priority DESC, created_at ASC
         """, (status.value,))
@@ -332,7 +289,7 @@ class QueueManager:
         cursor = conn.cursor()
 
         cursor.execute("""
-            UPDATE tasks
+            UPDATE documentation_tasks
             SET suggestion = ?, updated_at = ?
             WHERE id = ?
         """, (suggestion, datetime.now().isoformat(), task_id))
@@ -351,7 +308,7 @@ class QueueManager:
         cursor = conn.cursor()
 
         cursor.execute("""
-            UPDATE tasks
+            UPDATE documentation_tasks
             SET accepted = 1, updated_at = ?
             WHERE id = ?
         """, (datetime.now().isoformat(), task_id))
@@ -371,7 +328,7 @@ class QueueManager:
         cursor = conn.cursor()
 
         cursor.execute("""
-            SELECT * FROM tasks
+            SELECT * FROM documentation_tasks
             WHERE accepted = 1
             ORDER BY file_path ASC, line_number DESC
         """)
@@ -391,7 +348,7 @@ class QueueManager:
         conn = sqlite3.connect(self.db_path)
         cursor = conn.cursor()
 
-        cursor.execute("DELETE FROM tasks WHERE id = ?", (task_id,))
+        cursor.execute("DELETE FROM documentation_tasks WHERE id = ?", (task_id,))
 
         conn.commit()
         conn.close()
