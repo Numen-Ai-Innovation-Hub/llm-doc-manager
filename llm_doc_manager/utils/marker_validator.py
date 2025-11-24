@@ -6,9 +6,12 @@ before processing them with the LLM.
 """
 
 import re
-from dataclasses import dataclass
+import json
+import hashlib
+from dataclasses import dataclass, asdict
 from typing import List, Optional, Tuple
 from enum import Enum
+from pathlib import Path
 
 from .marker_detector import MarkerDetector, MarkerType, MarkerPatterns
 
@@ -312,3 +315,108 @@ class MarkerValidator:
             parts.append(f"ℹ️  {len(infos)} info")
 
         return ", ".join(parts)
+
+    def save_validation_results(self, file_path: str, content: str, issues: List[ValidationIssue], blocks: List) -> None:
+        """
+        Save validation results to database.
+
+        Args:
+            file_path: Path to validated file
+            content: File content (used to compute hash)
+            issues: List of validation issues found
+            blocks: List of DetectedBlock objects (already computed by scanner)
+        """
+        # Import here to avoid circular dependency
+        from ..src.database import DatabaseManager
+
+        db = DatabaseManager()
+
+        # Compute file hash
+        file_hash = hashlib.md5(content.encode('utf-8')).hexdigest()
+
+        # Use provided blocks instead of detecting again
+        markers_count = len(blocks)
+
+        # Count errors and warnings
+        error_count = len([i for i in issues if i.level == ValidationLevel.ERROR])
+        warning_count = len([i for i in issues if i.level == ValidationLevel.WARNING])
+
+        # Determine if file is valid (no errors)
+        is_valid = 1 if error_count == 0 else 0
+
+        # Serialize issues to JSON (convert enum to string)
+        issues_as_dict = []
+        for issue in issues:
+            issue_dict = asdict(issue)
+            # Convert ValidationLevel enum to string for JSON serialization
+            issue_dict['level'] = issue.level.value
+            issues_as_dict.append(issue_dict)
+
+        validation_details = json.dumps({
+            'issues': issues_as_dict,
+            'summary': self.format_summary(issues)
+        })
+
+        # Save to database
+        db.execute_query("""
+            INSERT OR REPLACE INTO file_validations
+            (file_path, is_valid, file_hash, markers_count, error_count, warning_count, validation_details)
+            VALUES (?, ?, ?, ?, ?, ?, ?)
+        """, (
+            file_path,
+            is_valid,
+            file_hash,
+            markers_count,
+            error_count,
+            warning_count,
+            validation_details
+        ))
+
+    def create_tasks_from_validation(self, file_path: str, blocks: List) -> int:
+        """
+        Create DocTasks for each marker found in the file.
+
+        This method creates tasks for:
+        - docstring markers: generate_docstring tasks (HIGH priority)
+        - class_doc markers: generate_docstring tasks (HIGH priority)
+        - comment markers: generate_comment tasks (MEDIUM priority)
+
+        Args:
+            file_path: Path to file to process
+            blocks: List of DetectedBlock objects (already computed by scanner)
+
+        Returns:
+            Number of tasks created
+        """
+        # Import here to avoid circular dependency
+        from ..src.queue import QueueManager, DocTask, TaskPriority
+        from ..src.constants import MARKER_TO_TASK_TYPE
+
+        queue = QueueManager()
+        tasks_created = 0
+
+        for block in blocks:
+            # Use centralized mapping
+            task_type = MARKER_TO_TASK_TYPE.get(block.marker_type, 'generate_docstring')
+
+            # Determine priority (HIGH for docstrings, MEDIUM for comments)
+            if block.marker_type in [MarkerType.DOCSTRING, MarkerType.CLASS_DOC]:
+                priority = TaskPriority.HIGH.value
+            else:
+                priority = TaskPriority.MEDIUM.value
+
+            # Create task
+            task = DocTask(
+                file_path=file_path,
+                line_number=block.start_line,
+                task_type=task_type,
+                marker_text=block.marker_type.value,
+                context=block.full_code,
+                priority=priority,
+                scope_name=block.function_name or 'unknown'
+            )
+
+            queue.add_task(task)
+            tasks_created += 1
+
+        return tasks_created

@@ -11,12 +11,13 @@ from pathlib import Path
 from typing import Optional
 
 from .config import Config, ConfigManager
-from .queue import QueueManager, TaskStatus, DocTask
+from .queue import QueueManager, TaskStatus, DocTask, TaskPriority
 from .scanner import Scanner
 from .processor import Processor, ProcessResult
 from .applier import Applier, Suggestion
 from .hashing import HashStorage
 from .detector import ChangeDetector
+from .constants import MARKER_VALUE_TO_TASK_TYPE, TASK_TYPE_LABELS
 from ..utils.marker_validator import MarkerValidator, ValidationLevel
 
 
@@ -45,17 +46,9 @@ def init(overwrite):
 
 @cli.command()
 @click.option('--path', multiple=True, help='Paths to scan (can specify multiple)')
-def sync(path):
+@click.option('--force', is_flag=True, help='Force rescan even if files are unchanged')
+def sync(path, force):
     """Sync markers with hash-based change detection and create tasks."""
-
-    def get_task_type_from_marker(marker_type_value):
-        """Map marker type to processor task type."""
-        marker_to_task = {
-            'docstring': 'generate_docstring',
-            'class_doc': 'generate_class',
-            'comment': 'generate_comment'
-        }
-        return marker_to_task.get(marker_type_value, 'generate_docstring')
 
     try:
         # Load config
@@ -69,17 +62,19 @@ def sync(path):
         # Initialize components
         queue_manager = QueueManager()
         scanner = Scanner(config)
+        validator = MarkerValidator()
 
-        # Check for pending tasks before sync
-        pending_tasks = queue_manager.get_pending_tasks()
-        if pending_tasks:
-            click.echo(f"⚠️  Cannot sync: {len(pending_tasks)} pending task(s) in queue")
-            click.echo("\nPlease complete the current workflow first:")
-            click.echo("  1. Run 'llm-doc-manager process' to generate suggestions")
-            click.echo("  2. Run 'llm-doc-manager review' to review suggestions")
-            click.echo("  3. Run 'llm-doc-manager apply' to apply accepted changes")
-            click.echo("\nOr clear the queue with 'llm-doc-manager clear' to start fresh")
-            sys.exit(1)
+        # Check for pending tasks before sync (unless --force)
+        if not force:
+            pending_tasks = queue_manager.get_pending_tasks()
+            if pending_tasks:
+                click.echo(f"⚠️  Cannot sync: {len(pending_tasks)} pending task(s) in queue")
+                click.echo("\nPlease complete the current workflow first:")
+                click.echo("  1. Run 'llm-doc-manager process' to generate suggestions")
+                click.echo("  2. Run 'llm-doc-manager review' to review suggestions")
+                click.echo("  3. Run 'llm-doc-manager apply' to apply accepted changes")
+                click.echo("\nOr use --force to ignore pending tasks, or clear with 'llm-doc-manager clear'")
+                sys.exit(1)
 
         # Initialize hash storage
         db_path = Path.cwd() / '.llm-doc-manager' / 'llm_doc_manager.db'
@@ -116,8 +111,8 @@ def sync(path):
             for error in scan_result.errors[:5]:
                 click.echo(f"  - {error}")
 
-        # Step 2: Detect changes using hash comparison
-        click.echo("\n🔄 Detecting changes using content hashes...")
+        # Step 2: Process files with validation results saved to database
+        click.echo("\n🔄 Detecting changes and creating tasks...")
 
         tasks_created = 0
         files_with_changes = 0
@@ -127,11 +122,19 @@ def sync(path):
             if not blocks:
                 continue
 
+            # Check if file has validation issues (already checked above, this is per-file)
+            file_issues = [i for i in scan_result.validation_issues if i.file_path == file_path]
+            has_errors = any(i.level == ValidationLevel.ERROR for i in file_issues)
+
+            if has_errors:
+                # Skip files with validation errors
+                continue
+
             # Detect changes (returns tuple: LIST of reports and current_hashes)
             change_reports, current_hashes = detector.detect_changes(file_path, blocks)
 
             # Check if there are any real changes (skip NONE scope)
-            has_changes = any(report.scope != 'NONE' for report in change_reports)
+            has_changes = any(report.scope != 'NONE' for report in change_reports) or force
 
             if not has_changes:
                 # No changes - don't create tasks
@@ -142,82 +145,66 @@ def sync(path):
 
             files_with_changes += 1
 
+            # Read file content for validator
+            try:
+                with open(file_path, 'r', encoding='utf-8') as f:
+                    content = f.read()
+            except Exception as e:
+                click.echo(f"  ❌ Error reading {file_path}: {e}")
+                continue
+
+            # Save validation results to database (pass blocks to avoid re-detection)
+            validator.save_validation_results(str(file_path), content, file_issues, blocks)
+
             # Collect all changed names from all reports to avoid duplicates
             all_changed_names = set()
             for report in change_reports:
                 if report.scope != 'NONE':
                     all_changed_names.update(report.changed_items + report.new_items)
 
-            # Process each report (can be multiple: CLASS + METHOD)
-            for change_report in change_reports:
-                if change_report.scope == 'NONE':
-                    # Skip NONE reports when processing multiple reports
-                    continue
+            # Display change summary
+            if force:
+                click.echo(f"  🔄 {file_path} - Forced rescan")
+            else:
+                for change_report in change_reports:
+                    if change_report.scope == 'NONE':
+                        continue
+                    elif change_report.scope == 'FILE':
+                        click.echo(f"  📄 {file_path} - New file")
+                    elif change_report.scope == 'CLASS':
+                        changed_names = set(change_report.changed_items + change_report.new_items)
+                        click.echo(f"  🔹 {file_path} - {change_report.reason}:")
+                        for name in sorted(changed_names):
+                            click.echo(f"     {name}")
+                    elif change_report.scope == 'METHOD':
+                        changed_names = set(change_report.changed_items + change_report.new_items)
+                        click.echo(f"  🔸 {file_path} - {change_report.reason}:")
+                        for name in sorted(changed_names):
+                            click.echo(f"     {name}")
 
-                # Display change summary
-                if change_report.scope == 'FILE':
-                    click.echo(f"  📄 {file_path} - New file, all blocks will be processed")
-                    # Create tasks for all blocks
-                    for block in blocks:
+            # Create tasks using MarkerValidator (if force OR new file, create all tasks)
+            if force or any(r.scope == 'FILE' for r in change_reports):
+                # Create tasks for ALL blocks (pass blocks to avoid re-detection)
+                file_tasks = validator.create_tasks_from_validation(str(file_path), blocks)
+                tasks_created += file_tasks
+            else:
+                # Create tasks only for changed blocks
+                for block in blocks:
+                    block_name = block.function_name
+                    if block_name in all_changed_names:
                         task = DocTask(
                             file_path=file_path,
                             line_number=block.start_line,
-                            task_type=get_task_type_from_marker(block.marker_type.value),
+                            task_type=MARKER_VALUE_TO_TASK_TYPE.get(block.marker_type.value, 'generate_docstring'),
                             marker_text=block.marker_type.value,
                             context=block.full_code,
-                            priority=1,
+                            priority=TaskPriority.HIGH.value if block.marker_type.value in ['docstring', 'class_doc'] else TaskPriority.MEDIUM.value,
                             scope_name=block.function_name
                         )
                         queue_manager.add_task(task)
                         tasks_created += 1
 
-                elif change_report.scope == 'CLASS':
-                    # Show specific class names in message
-                    changed_names = set(change_report.changed_items + change_report.new_items)
-                    click.echo(f"  🔹 {file_path} - {change_report.reason}:")
-                    for name in sorted(changed_names):
-                        click.echo(f"     {name}")
-                    # Create tasks for changed/new classes
-                    for block in blocks:
-                        # function_name is used for both functions AND classes
-                        block_name = block.function_name
-                        if block_name in changed_names:
-                            task = DocTask(
-                                file_path=file_path,
-                                line_number=block.start_line,
-                                task_type=get_task_type_from_marker(block.marker_type.value),
-                                marker_text=block.marker_type.value,
-                                context=block.full_code,
-                                priority=2,
-                                scope_name=block.function_name
-                            )
-                            queue_manager.add_task(task)
-                            tasks_created += 1
-
-                elif change_report.scope == 'METHOD':
-                    # Show specific method names in message
-                    changed_names = set(change_report.changed_items + change_report.new_items)
-                    click.echo(f"  🔸 {file_path} - {change_report.reason}:")
-                    for name in sorted(changed_names):
-                        click.echo(f"     {name}")
-                    # Create tasks for changed/new methods
-                    for block in blocks:
-                        # function_name is used for both functions AND classes
-                        block_name = block.function_name
-                        if block_name in changed_names:
-                            task = DocTask(
-                                file_path=file_path,
-                                line_number=block.start_line,
-                                task_type=get_task_type_from_marker(block.marker_type.value),
-                                marker_text=block.marker_type.value,
-                                context=block.full_code,
-                                priority=3,
-                                scope_name=block.function_name
-                            )
-                            queue_manager.add_task(task)
-                            tasks_created += 1
-
-            # Calculate token savings for unchanged blocks (count once per block)
+            # Calculate token savings for unchanged blocks
             for block in blocks:
                 if block.function_name not in all_changed_names:
                     token_savings += 500
@@ -334,7 +321,9 @@ def review():
             click.echo(f"{'='*60}")
             # Build header
             click.echo(f"[{i}/{len(completed)}] {task.file_path}:{task.line_number}")
-            click.echo(f"Type: {task.task_type}")
+            # Show human-readable type label
+            type_label = TASK_TYPE_LABELS.get(task.task_type, task.task_type)
+            click.echo(f"Type: {type_label}")
             if task.scope_name:
                 click.echo(f"Name: {task.scope_name}")
             click.echo(f"{'='*60}")
