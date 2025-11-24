@@ -249,8 +249,8 @@ class Applier:
             # Insert new docstring after function definition
             insert_at = func_line_idx + 1
             docstring_lines = formatted_docstring.split('\n')
-            for i, docstring_line in enumerate(docstring_lines):
-                lines.insert(insert_at + i, docstring_line)
+            # Insert all lines at once using slice assignment (more efficient and correct)
+            lines[insert_at:insert_at] = docstring_lines
 
         # NOTE: Markers are preserved in the code for hash-based tracking.
         # They will NOT be removed after documentation is applied.
@@ -342,15 +342,33 @@ class Applier:
         # Convert EXTERNAL (1-indexed) to INTERNAL (0-indexed)
         marker_line_idx = line_number - 1  # INTERNAL: Convert to 0-indexed
 
-        # Find the code line (should be right after the marker)
+        # Find existing comment or code line
+        # Look for: comment line OR code line (in that order)
+        existing_comment_idx = None
         code_line_idx = None
-        for i in range(marker_line_idx + 1, min(len(lines), marker_line_idx + 10)):
+
+        for i in range(marker_line_idx + 1, len(lines)):
             line = lines[i].strip()
-            # Skip empty lines and end marker
-            if line and not line.startswith('#'):
+
+            # Stop if we hit the end marker
+            if line.startswith('# @llm-comm-end'):
+                break
+
+            # Skip empty lines
+            if not line:
+                continue
+
+            # Check if this is a comment (but not a marker)
+            if line.startswith('#') and not line.startswith('# @llm-'):
+                if existing_comment_idx is None:
+                    existing_comment_idx = i
+                # Continue to find the code line after comments
+            elif code_line_idx is None:
+                # Found the actual code line
                 code_line_idx = i
                 break
 
+        # Determine where to place the comment
         if code_line_idx is None:
             # Fallback: assume code is right after marker
             code_line_idx = marker_line_idx + 1
@@ -365,11 +383,16 @@ class Applier:
                 else:
                     break
 
-        # Format comment
+        # Format new comment
         formatted_comment = f"{indent}# {suggested_text.strip()}"
 
-        # Insert comment above the code line
-        lines.insert(code_line_idx, formatted_comment)
+        # Replace existing comment or insert new one
+        if existing_comment_idx is not None:
+            # Replace existing comment
+            lines[existing_comment_idx] = formatted_comment
+        else:
+            # Insert new comment above the code line
+            lines.insert(code_line_idx, formatted_comment)
 
         # NOTE: Markers are preserved in the code for hash-based tracking.
         # They will NOT be removed after documentation is applied.

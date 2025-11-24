@@ -127,84 +127,100 @@ def sync(path):
             if not blocks:
                 continue
 
-            # Detect changes (returns tuple: report and current_hashes)
-            change_report, current_hashes = detector.detect_changes(file_path, blocks)
+            # Detect changes (returns tuple: LIST of reports and current_hashes)
+            change_reports, current_hashes = detector.detect_changes(file_path, blocks)
 
-            if change_report.scope == 'NONE':
+            # Check if there are any real changes (skip NONE scope)
+            has_changes = any(report.scope != 'NONE' for report in change_reports)
+
+            if not has_changes:
                 # No changes - don't create tasks
-                click.echo(f"  ⊘ {file_path} - {change_report.reason}")
+                click.echo(f"  ⊘ {file_path} - {change_reports[0].reason}")
                 # Estimate token savings (assuming ~500 tokens per block)
                 token_savings += len(blocks) * 500
                 continue
 
             files_with_changes += 1
 
-            # Display change summary
-            if change_report.scope == 'FILE':
-                click.echo(f"  📄 {file_path} - New file, all blocks will be processed")
-                # Create tasks for all blocks
-                for block in blocks:
-                    task = DocTask(
-                        file_path=file_path,
-                        line_number=block.start_line,
-                        task_type=get_task_type_from_marker(block.marker_type.value),
-                        marker_text=block.marker_type.value,
-                        context=block.full_code,
-                        priority=1,
-                        scope_name=block.function_name
-                    )
-                    queue_manager.add_task(task)
-                    tasks_created += 1
+            # Collect all changed names from all reports to avoid duplicates
+            all_changed_names = set()
+            for report in change_reports:
+                if report.scope != 'NONE':
+                    all_changed_names.update(report.changed_items + report.new_items)
 
-            elif change_report.scope == 'CLASS':
-                # Show specific class names in message
-                changed_names = set(change_report.changed_items + change_report.new_items)
-                click.echo(f"  🔹 {file_path} - {change_report.reason}:")
-                for name in sorted(changed_names):
-                    click.echo(f"     {name}")
-                # Create tasks for changed/new classes
-                for block in blocks:
-                    # function_name is used for both functions AND classes
-                    block_name = block.function_name
-                    if block_name in changed_names:
+            # Process each report (can be multiple: CLASS + METHOD)
+            for change_report in change_reports:
+                if change_report.scope == 'NONE':
+                    # Skip NONE reports when processing multiple reports
+                    continue
+
+                # Display change summary
+                if change_report.scope == 'FILE':
+                    click.echo(f"  📄 {file_path} - New file, all blocks will be processed")
+                    # Create tasks for all blocks
+                    for block in blocks:
                         task = DocTask(
                             file_path=file_path,
                             line_number=block.start_line,
                             task_type=get_task_type_from_marker(block.marker_type.value),
                             marker_text=block.marker_type.value,
                             context=block.full_code,
-                            priority=2,
+                            priority=1,
                             scope_name=block.function_name
                         )
                         queue_manager.add_task(task)
                         tasks_created += 1
-                    else:
-                        token_savings += 500
 
-            elif change_report.scope == 'METHOD':
-                # Show specific method names in message
-                changed_names = set(change_report.changed_items + change_report.new_items)
-                click.echo(f"  🔸 {file_path} - {change_report.reason}:")
-                for name in sorted(changed_names):
-                    click.echo(f"     {name}")
-                # Create tasks for changed/new methods
-                for block in blocks:
-                    # function_name is used for both functions AND classes
-                    block_name = block.function_name
-                    if block_name in changed_names:
-                        task = DocTask(
-                            file_path=file_path,
-                            line_number=block.start_line,
-                            task_type=get_task_type_from_marker(block.marker_type.value),
-                            marker_text=block.marker_type.value,
-                            context=block.full_code,
-                            priority=3,
-                            scope_name=block.function_name
-                        )
-                        queue_manager.add_task(task)
-                        tasks_created += 1
-                    else:
-                        token_savings += 500
+                elif change_report.scope == 'CLASS':
+                    # Show specific class names in message
+                    changed_names = set(change_report.changed_items + change_report.new_items)
+                    click.echo(f"  🔹 {file_path} - {change_report.reason}:")
+                    for name in sorted(changed_names):
+                        click.echo(f"     {name}")
+                    # Create tasks for changed/new classes
+                    for block in blocks:
+                        # function_name is used for both functions AND classes
+                        block_name = block.function_name
+                        if block_name in changed_names:
+                            task = DocTask(
+                                file_path=file_path,
+                                line_number=block.start_line,
+                                task_type=get_task_type_from_marker(block.marker_type.value),
+                                marker_text=block.marker_type.value,
+                                context=block.full_code,
+                                priority=2,
+                                scope_name=block.function_name
+                            )
+                            queue_manager.add_task(task)
+                            tasks_created += 1
+
+                elif change_report.scope == 'METHOD':
+                    # Show specific method names in message
+                    changed_names = set(change_report.changed_items + change_report.new_items)
+                    click.echo(f"  🔸 {file_path} - {change_report.reason}:")
+                    for name in sorted(changed_names):
+                        click.echo(f"     {name}")
+                    # Create tasks for changed/new methods
+                    for block in blocks:
+                        # function_name is used for both functions AND classes
+                        block_name = block.function_name
+                        if block_name in changed_names:
+                            task = DocTask(
+                                file_path=file_path,
+                                line_number=block.start_line,
+                                task_type=get_task_type_from_marker(block.marker_type.value),
+                                marker_text=block.marker_type.value,
+                                context=block.full_code,
+                                priority=3,
+                                scope_name=block.function_name
+                            )
+                            queue_manager.add_task(task)
+                            tasks_created += 1
+
+            # Calculate token savings for unchanged blocks (count once per block)
+            for block in blocks:
+                if block.function_name not in all_changed_names:
+                    token_savings += 500
 
             # Update stored hashes after creating tasks (reuse calculated hashes)
             detector.update_stored_hashes(file_path, current_hashes)

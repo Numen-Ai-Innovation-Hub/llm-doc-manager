@@ -1,8 +1,9 @@
 """
-Change detection logic using hierarchical hash comparison.
+Change detection logic using independent hash comparison.
 
-Detects changes at file/class/method levels by comparing current hashes
-with stored hashes from previous runs.
+Detects changes at file/class/method levels independently by comparing
+current hashes with stored hashes from previous runs. When both class
+and method changes are detected, reports BOTH (Option 1: Report BOTH).
 """
 
 from dataclasses import dataclass
@@ -47,7 +48,9 @@ class ChangeDetector:
             blocks: List of DetectedBlock objects from MarkerDetector
 
         Returns:
-            Tuple of (ChangeReport, current_hashes dict) for reuse
+            Tuple of (List[ChangeReport], current_hashes dict)
+            - List can contain 0, 1, or multiple ChangeReports
+            - Multiple reports occur when both CLASS and METHOD changes detected
         """
         # Calculate current hashes (once)
         current_hashes = ContentHasher.calculate_all_hashes(file_path, blocks)
@@ -67,7 +70,7 @@ class ChangeDetector:
                 new_items=new_items,
                 reason='New file - no previous hashes stored'
             )
-            return report, current_hashes
+            return [report], current_hashes
 
         # Compare file-level hash
         file_changed = self._compare_file_hash(
@@ -85,61 +88,61 @@ class ChangeDetector:
                 new_items=[],
                 reason='File hash unchanged - no modifications'
             )
-            return report, current_hashes
+            return [report], current_hashes
 
-        # File changed - apply hierarchical detection (METHOD > CLASS > FILE)
-        # This prevents false positives when inner scopes change
+        # File changed - detect changes at all levels independently
+        # Report ALL detected changes (Option 1: Report BOTH CLASS + METHODS)
 
-        # Check method level first (most specific)
+        # Check method level
         method_changes = self._compare_scope_hashes(
             current_hashes['methods'],
             stored_hashes['methods']
         )
 
-        # Check class level (intermediate)
+        # Check class level
         class_changes = self._compare_scope_hashes(
             current_hashes['classes'],
             stored_hashes['classes']
         )
 
-        # Hierarchical logic: report the most specific change
-        if method_changes['changed'] or method_changes['new']:
-            # Priority 1: Method-level changes detected
-            # Ignore class/file changes (they're reflections of method changes)
-            report = ChangeReport(
-                file_path=file_path,
-                scope='METHOD',
-                changed_items=method_changes['changed'],
-                unchanged_items=method_changes['unchanged'],
-                new_items=method_changes['new'],
-                reason=self._format_method_reason(method_changes)
-            )
-            return report, current_hashes
+        # Collect all reports (can be multiple)
+        reports = []
 
-        elif class_changes['changed'] or class_changes['new']:
-            # Priority 2: Class-level changes (outside of methods)
-            # Ignore file changes (they're reflections of class changes)
-            report = ChangeReport(
+        # Add class-level report if classes changed
+        if class_changes['changed'] or class_changes['new']:
+            reports.append(ChangeReport(
                 file_path=file_path,
                 scope='CLASS',
                 changed_items=class_changes['changed'],
                 unchanged_items=class_changes['unchanged'],
                 new_items=class_changes['new'],
                 reason=self._format_class_reason(class_changes)
-            )
-            return report, current_hashes
+            ))
 
-        # File hash changed but no class/method changes detected
-        # This means formatting/comment changes only
-        report = ChangeReport(
-            file_path=file_path,
-            scope='NONE',
-            changed_items=[],
-            unchanged_items=self._extract_scope_names(current_hashes),
-            new_items=[],
-            reason='Only formatting/comment changes detected (normalized hashes match)'
-        )
-        return report, current_hashes
+        # Add method-level report if methods changed
+        if method_changes['changed'] or method_changes['new']:
+            reports.append(ChangeReport(
+                file_path=file_path,
+                scope='METHOD',
+                changed_items=method_changes['changed'],
+                unchanged_items=method_changes['unchanged'],
+                new_items=method_changes['new'],
+                reason=self._format_method_reason(method_changes)
+            ))
+
+        # If no changes detected at any level, file hash changed due to formatting only
+        if not reports:
+            reports.append(ChangeReport(
+                file_path=file_path,
+                scope='NONE',
+                changed_items=[],
+                unchanged_items=self._extract_scope_names(current_hashes),
+                new_items=[],
+                reason='Only formatting/comment changes detected (normalized hashes match)'
+            ))
+
+        # Return list of reports (can be 0, 1, or multiple)
+        return reports, current_hashes
 
     def _compare_file_hash(
         self,

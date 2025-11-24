@@ -80,6 +80,9 @@ class MarkerValidator:
         # Check for inconsistent indentation
         issues.extend(self._check_indentation(lines, file_path))
 
+        # Check for comment blocks crossing scope boundaries
+        issues.extend(self._check_comment_scope(lines, file_path))
+
         # Detect blocks and validate their content
         try:
             blocks = self.detector.detect_blocks(content, file_path)
@@ -205,6 +208,85 @@ class MarkerValidator:
                             line_number=i
                         ))
                     break
+
+        return issues
+
+    def _check_comment_scope(self, lines: List[str], file_path: str) -> List[ValidationIssue]:
+        """
+        Check that comment blocks (@llm-comm) don't cross scope boundaries.
+
+        A comment block cannot:
+        - Start inside a def/class and end outside
+        - Start outside a def/class and end inside
+
+        Args:
+            lines: File lines
+            file_path: Path to file (for error messages)
+
+        Returns:
+            List of validation issues
+        """
+        issues = []
+
+        # Get comment marker patterns
+        comment_start = self.start_patterns.get(MarkerType.COMMENT)
+        comment_end = self.end_patterns.get(MarkerType.COMMENT)
+
+        if not comment_start or not comment_end:
+            return issues
+
+        # Find all comment block pairs
+        comment_blocks = []  # List of (start_line, end_line) tuples
+        start_stack = []
+
+        for i, line in enumerate(lines, start=1):
+            if comment_start.match(line):
+                start_stack.append(i)
+            elif comment_end.match(line):
+                if start_stack:
+                    start_line = start_stack.pop()
+                    comment_blocks.append((start_line, i))
+
+        # For each comment block, check if it crosses scope boundaries
+        for start_line, end_line in comment_blocks:
+            # Get indentation of start and end markers
+            start_indent = len(lines[start_line - 1]) - len(lines[start_line - 1].lstrip())
+            end_indent = len(lines[end_line - 1]) - len(lines[end_line - 1].lstrip())
+
+            # Check 1: End marker has different indentation than start
+            # This indicates the block exits/enters a scope
+            if start_indent != end_indent:
+                issues.append(ValidationIssue(
+                    level=ValidationLevel.ERROR,
+                    message=f"Comment block crosses scope boundary - START at line {start_line} (indent: {start_indent}) and END at line {end_line} (indent: {end_indent}) have different indentation levels",
+                    file_path=file_path,
+                    line_number=start_line,
+                    marker_type=MarkerType.COMMENT.value
+                ))
+                continue
+
+            # Check 2: There's a 'def' or 'class' between start and end
+            # that would indicate entering a new scope
+            for i in range(start_line, end_line):
+                line = lines[i]
+                stripped = line.strip()
+
+                # Check for function or class definition
+                if stripped.startswith('def ') or stripped.startswith('async def ') or stripped.startswith('class '):
+                    # Get indentation of this definition
+                    def_indent = len(line) - len(line.lstrip())
+
+                    # If definition is at same or outer level than start marker,
+                    # it means we're crossing into a new scope
+                    if def_indent <= start_indent:
+                        issues.append(ValidationIssue(
+                            level=ValidationLevel.ERROR,
+                            message=f"Comment block crosses scope boundary - starts at line {start_line}, encounters '{stripped.split('(')[0].strip()}' at line {i+1}, ends at line {end_line}",
+                            file_path=file_path,
+                            line_number=start_line,
+                            marker_type=MarkerType.COMMENT.value
+                        ))
+                        break
 
         return issues
 

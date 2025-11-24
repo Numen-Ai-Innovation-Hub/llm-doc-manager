@@ -42,6 +42,7 @@ def find_docstring_location(lines: list, start_idx: int) -> Tuple[Optional[int],
     Find the start and end line indices of a docstring.
 
     Searches from start_idx forward to find triple-quote delimiters.
+    Stops searching when encountering markers or non-docstring code.
 
     Args:
         lines (list): List of code lines (0-indexed)
@@ -56,8 +57,12 @@ def find_docstring_location(lines: list, start_idx: int) -> Tuple[Optional[int],
     docstring_end = None
     quote_type = None
 
-    for i in range(start_idx, min(len(lines), start_idx + 20)):
+    for i in range(start_idx, len(lines)):  # Search until end of file (no arbitrary limit)
         line = lines[i].strip()
+
+        # Stop if we hit an END marker (end of current block)
+        if line.startswith('# @llm-') and '-end' in line:
+            break
 
         # Check for triple quotes
         if '"""' in line or "'''" in line:
@@ -75,6 +80,10 @@ def find_docstring_location(lines: list, start_idx: int) -> Tuple[Optional[int],
                 if quote_type in line:
                     docstring_end = i
                     break
+        elif docstring_start is None and line and not line.startswith('#'):
+            # Found non-comment, non-empty line before docstring
+            # This means there's no docstring in this location
+            break
 
     if docstring_start is not None and docstring_end is not None:
         return (docstring_start, docstring_end)
