@@ -297,7 +297,7 @@ def sync(path, force):
                         config=config,
                         db=db_manager,
                         detector=detector,
-                        llm_client=processor.llm_client
+                        llm_client=processor
                     )
 
                     # Check if docs need regeneration (incremental)

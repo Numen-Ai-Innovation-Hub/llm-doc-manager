@@ -63,7 +63,7 @@ class DocsGenerator:
             config: Application configuration
             db: Database connection
             detector: Change detector for incremental updates
-            llm_client: LLM client (must have _call_llm method)
+            llm_client: Processor instance (must have _call_llm method)
         """
         self.config = config
         self.db = db
@@ -115,7 +115,17 @@ class DocsGenerator:
 
             # 3. Build import graph
             logger.info("Building import dependency graph")
-            self._import_graph = self.analyzer.build_import_graph()
+            import_relationships = self.analyzer.build_import_graph()
+            # Convert ImportRelationship objects to dicts for JSON serialization
+            self._import_graph = [
+                {
+                    "from_module": rel.from_module,
+                    "to_module": rel.to_module,
+                    "import_type": rel.import_type,
+                    "imported_names": rel.imported_names
+                }
+                for rel in import_relationships
+            ]
 
             # 4. Detect entry points
             logger.info("Detecting entry points")
