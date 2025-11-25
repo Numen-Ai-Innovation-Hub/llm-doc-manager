@@ -11,6 +11,7 @@ from dataclasses import dataclass
 
 from .config import Config, ConfigManager
 from .queue import DocTask, QueueManager, TaskStatus
+from .constants import TASK_PROCESSING_ORDER
 from ..utils.docstring_handler import extract_docstring
 from ..utils.logger_setup import get_logger
 
@@ -91,6 +92,8 @@ class Processor:
         template_dir = Path(__file__).parent.parent / "templates"
 
         template_files = {
+            "module_generate": "module_generate.md",
+            "module_validate": "module_validate.md",
             "docstring_generate": "docstring_generate.md",
             "docstring_validate": "docstring_validate.md",
             "class_generate": "class_generate.md",
@@ -159,7 +162,20 @@ class Processor:
 
     def process_queue(self, limit: Optional[int] = None) -> List[ProcessResult]:
         """
-        Process pending tasks from the queue.
+        Process pending tasks from the queue following TASK_PROCESSING_ORDER.
+
+        Tasks are processed in this fixed sequence:
+        1. generate_module (module-level docstrings)
+        2. validate_module
+        3. generate_class (class docstrings)
+        4. validate_class
+        5. generate_docstring (method/function docstrings)
+        6. validate_docstring
+        7. generate_comment (inline comments)
+        8. validate_comment
+
+        This ensures module documentation is completed before class docs,
+        and class docs before method docs.
 
         Args:
             limit: Maximum number of tasks to process
@@ -167,12 +183,40 @@ class Processor:
         Returns:
             List of ProcessResults
         """
-        pending_tasks = self.queue_manager.get_pending_tasks(limit=limit)
-        results = []
+        # Get all pending tasks
+        all_pending = self.queue_manager.get_pending_tasks(limit=None)
 
-        for task in pending_tasks:
-            result = self.process_task(task)
-            results.append(result)
+        # Group tasks by type
+        tasks_by_type: Dict[str, List[DocTask]] = {}
+        for task in all_pending:
+            task_type = task.task_type
+            if task_type not in tasks_by_type:
+                tasks_by_type[task_type] = []
+            tasks_by_type[task_type].append(task)
+
+        # Process tasks in TASK_PROCESSING_ORDER
+        results = []
+        processed_count = 0
+
+        for task_type in TASK_PROCESSING_ORDER:
+            if limit and processed_count >= limit:
+                break
+
+            tasks_of_type = tasks_by_type.get(task_type, [])
+
+            for task in tasks_of_type:
+                if limit and processed_count >= limit:
+                    break
+
+                logger.info(f"Processing task {task.id} of type '{task_type}'")
+                result = self.process_task(task)
+                results.append(result)
+                processed_count += 1
+
+        logger.info(
+            f"Processed {processed_count} tasks in order: "
+            f"{', '.join([t for t in TASK_PROCESSING_ORDER if t in tasks_by_type])}"
+        )
 
         return results
 
@@ -190,6 +234,8 @@ class Processor:
 
         # Map task type to template key
         template_map = {
+            "generate_module": "module_generate",
+            "validate_module": "module_validate",
             "generate_docstring": "docstring_generate",
             "validate_docstring": "docstring_validate",
             "generate_class": "class_generate",
@@ -324,7 +370,9 @@ class Processor:
                 parsed = json.loads(cleaned)
 
                 # Extract the appropriate field based on task type
-                if task.task_type == "validate_docstring" and "improved_docstring" in parsed:
+                if task.task_type == "validate_module" and "improved_docstring" in parsed:
+                    return parsed["improved_docstring"]
+                elif task.task_type == "validate_docstring" and "improved_docstring" in parsed:
                     return parsed["improved_docstring"]
                 elif task.task_type == "validate_class" and "improved_docstring" in parsed:
                     return parsed["improved_docstring"]

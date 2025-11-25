@@ -17,7 +17,9 @@ from .processor import Processor, ProcessResult
 from .applier import Applier, Suggestion
 from .hashing import HashStorage
 from .detector import ChangeDetector
+from .generator import DocsGenerator
 from .constants import TASK_TYPE_LABELS
+from .database import Database
 from ..utils.marker_validator import MarkerValidator, ValidationLevel
 
 
@@ -213,6 +215,79 @@ def sync(path, force):
             click.echo(f"\nNext: Run 'llm-doc-manager process' to generate suggestions")
         else:
             click.echo("\nNo changes detected. All documentation is up to date!")
+
+            # Natural sequence: If queue is empty (no pending tasks), check docs
+            # This happens after apply when all marker-based docs are complete
+            pending_count = len(queue_manager.get_pending_tasks())
+            if pending_count == 0:
+                click.echo("\n📚 Queue is empty. Checking if documentation generation is needed...")
+
+                try:
+                    # Initialize components for docs generation
+                    db = Database()
+                    processor = Processor(config, queue_manager)
+                    docs_generator = DocsGenerator(
+                        config=config,
+                        db=db,
+                        detector=detector,
+                        llm_client=processor.llm_client
+                    )
+
+                    # Check if docs need regeneration (incremental)
+                    if not force:
+                        docs_changes = detector.detect_docs_changes(
+                            project_root=config.project_root,
+                            db_connection=db.conn
+                        )
+
+                        if not docs_changes["docs_changed"]:
+                            click.echo("✓ Documentation is up to date. No changes detected in source files.")
+                            click.echo(f"  📂 Documentation available at: docs/")
+                            # Skip generation - all docs are current
+                            return
+
+                        # Show what needs updating
+                        click.echo("📝 Changes detected. Documentation needs updating:")
+                        if docs_changes["readme"]:
+                            click.echo("  • readme.md")
+                        if docs_changes["architecture"]:
+                            click.echo("  • architecture.md")
+                        if docs_changes["glossary"]:
+                            click.echo("  • glossary.md")
+                        if docs_changes["whereiwas"]:
+                            click.echo("  • whereiwas.md")
+                        if docs_changes["modules"]:
+                            click.echo(f"  • {len(docs_changes['modules'])} module docs")
+
+                    # Generate documentation (force or changes detected)
+                    click.echo("\n🔄 Generating project documentation...")
+                    result = docs_generator.generate_all_docs(force=force)
+
+                    # Display results
+                    if result["generated_files"]:
+                        click.echo(f"\n✓ Documentation generated!")
+                        click.echo(f"  Generated: {len(result['generated_files'])} files")
+                        for file_path in result["generated_files"][:10]:  # Show first 10
+                            click.echo(f"    ✓ {file_path}")
+                        if len(result["generated_files"]) > 10:
+                            click.echo(f"    ... and {len(result['generated_files']) - 10} more")
+
+                    if result["skipped_files"]:
+                        click.echo(f"  Skipped (up to date): {len(result['skipped_files'])} files")
+
+                    if result["errors"]:
+                        click.echo(f"\n⚠️  Generation errors ({len(result['errors'])}):")
+                        for error in result["errors"][:5]:
+                            click.echo(f"    ❌ {error}")
+
+                    click.echo(f"\n📂 Documentation available at: docs/")
+                    click.echo(f"  📖 Start with: docs/readme.md or docs/index.md")
+
+                except Exception as doc_error:
+                    click.echo(f"\n⚠️  Documentation generation failed: {doc_error}")
+                    click.echo("   (This does not affect marker-based documentation)")
+                    # Don't fail the entire sync command
+                    pass
 
     except Exception as e:
         click.echo(f"❌ Error: {e}", err=True)

@@ -148,7 +148,8 @@ class DatabaseManager:
                 doc_type TEXT NOT NULL,
                 generated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                 source_hash TEXT NOT NULL,
-                content_hash TEXT NOT NULL
+                content_hash TEXT NOT NULL,
+                metadata TEXT
             )
         """)
 

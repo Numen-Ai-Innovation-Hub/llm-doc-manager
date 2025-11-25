@@ -36,9 +36,10 @@ class MarkerValidationError(Exception):
 
 class MarkerType(Enum):
     """Types of documentation markers."""
-    DOCSTRING = "docstring"  # Method/function docstrings (@llm-doc)
-    CLASS_DOC = "class_doc"  # Class documentation (@llm-class)
-    COMMENT = "comment"      # Code comments (@llm-comm)
+    MODULE_DOC = "module_doc"  # Module documentation (@llm-module)
+    DOCSTRING = "docstring"    # Method/function docstrings (@llm-doc)
+    CLASS_DOC = "class_doc"    # Class documentation (@llm-class)
+    COMMENT = "comment"        # Code comments (@llm-comm)
 
 
 class MarkerPatterns:
@@ -49,6 +50,8 @@ class MarkerPatterns:
     """
 
     # Raw pattern strings
+    MODULE_START = r"^\s*#\s*@llm-module-start\s*$"
+    MODULE_END = r"^\s*#\s*@llm-module-end\s*$"
     DOC_START = r"^\s*#\s*@llm-doc-start\s*$"
     DOC_END = r"^\s*#\s*@llm-doc-end\s*$"
     CLASS_START = r"^\s*#\s*@llm-class-start\s*$"
@@ -68,6 +71,10 @@ class MarkerPatterns:
         """
         if cls._compiled_patterns is None:
             cls._compiled_patterns = {
+                MarkerType.MODULE_DOC: {
+                    'start': re.compile(cls.MODULE_START),
+                    'end': re.compile(cls.MODULE_END)
+                },
                 MarkerType.DOCSTRING: {
                     'start': re.compile(cls.DOC_START),
                     'end': re.compile(cls.DOC_END)
@@ -163,7 +170,9 @@ class MarkerDetector:
                 full_code = '\n'.join(block_lines)
 
                 # Analyze the block based on marker type
-                if marker_type == MarkerType.DOCSTRING:
+                if marker_type == MarkerType.MODULE_DOC:
+                    analysis = self._analyze_module_block(block_lines, file_path)
+                elif marker_type == MarkerType.DOCSTRING:
                     analysis = self._analyze_block(block_lines)
                 elif marker_type == MarkerType.CLASS_DOC:
                     analysis = self._analyze_class_block(block_lines)
@@ -379,5 +388,78 @@ class MarkerDetector:
             'docstring': '\n'.join(existing_comments) if existing_comments else None,
             'function_name': f"block_{start_line}"
         }
+
+        return result
+
+    def _analyze_module_block(self, block_lines: List[str], file_path: str) -> Dict:
+        """
+        Analyze a module block to extract module docstring.
+
+        Module blocks should contain the entire module (imports, classes, functions).
+        The module docstring should be at the very beginning (triple-quoted string).
+
+        Args:
+            block_lines: Lines of code in the block
+            file_path: Path to the file (for generating module name)
+
+        Returns:
+            Dictionary with analysis results
+        """
+        result = {
+            'has_docstring': False,
+            'docstring': None,
+            'function_name': None
+        }
+
+        # Extract module name from file path
+        # e.g., "src/scanner.py" -> "scanner"
+        import os
+        module_name = os.path.splitext(os.path.basename(file_path))[0]
+        result['function_name'] = f"module_{module_name}"
+
+        # Look for module docstring at the beginning
+        # Module docstring is a string literal at the top of the file
+        if not block_lines:
+            return result
+
+        # Find docstring - should be at index 0 or after some initial whitespace
+        docstring_start = None
+        for i, line in enumerate(block_lines):
+            stripped = line.strip()
+            if stripped.startswith('"""') or stripped.startswith("'''"):
+                docstring_start = i
+                break
+            elif stripped and not stripped.startswith('#'):
+                # Found code before docstring - no module docstring
+                break
+
+        if docstring_start is not None:
+            # Extract full docstring
+            quote_type = '"""' if block_lines[docstring_start].strip().startswith('"""') else "'''"
+
+            # Check if single-line docstring
+            first_line = block_lines[docstring_start].strip()
+            if first_line.count(quote_type) >= 2:
+                # Single-line docstring
+                docstring_text = first_line.strip(quote_type).strip()
+                if docstring_text and not self._is_placeholder(docstring_text):
+                    result['has_docstring'] = True
+                    result['docstring'] = docstring_text
+            else:
+                # Multi-line docstring
+                docstring_lines = []
+                for j in range(docstring_start, len(block_lines)):
+                    line = block_lines[j]
+                    docstring_lines.append(line)
+                    if j > docstring_start and quote_type in line:
+                        # Found closing quote
+                        break
+
+                docstring_text = '\n'.join(docstring_lines)
+                docstring_text = docstring_text.strip().strip(quote_type).strip()
+
+                if docstring_text and not self._is_placeholder(docstring_text):
+                    result['has_docstring'] = True
+                    result['docstring'] = docstring_text
 
         return result

@@ -6,8 +6,10 @@ current hashes with stored hashes from previous runs. When both class
 and method changes are detected, reports BOTH (Option 1: Report BOTH).
 """
 
+import hashlib
+from pathlib import Path
 from dataclasses import dataclass
-from typing import List, Dict, Set
+from typing import List, Dict, Set, Optional
 from ..utils.content_hash import ContentHasher, CodeHash
 from .hashing import HashStorage, StoredHash
 
@@ -270,3 +272,118 @@ class ChangeDetector:
                 line_start=hash_obj.line_start,
                 line_end=hash_obj.line_end
             )
+
+    def detect_docs_changes(
+        self,
+        project_root: str,
+        db_connection
+    ) -> Dict[str, bool]:
+        """
+        Detect if source files have changed since documentation was generated.
+
+        Compares current source file hashes with hashes stored in
+        generated_documentation table to determine if docs need regeneration.
+
+        Args:
+            project_root: Root directory of project
+            db_connection: Database connection to query generated_documentation
+
+        Returns:
+            Dictionary with documentation types and whether they need regeneration:
+            {
+                "docs_changed": bool,  # True if any source changed
+                "readme": bool,        # readme.md needs update
+                "architecture": bool,  # architecture.md needs update
+                "glossary": bool,      # glossary.md needs update
+                "whereiwas": bool,     # whereiwas.md needs update (git-based)
+                "modules": List[str]   # List of module docs needing update
+            }
+        """
+        cursor = db_connection.cursor()
+        project_path = Path(project_root)
+
+        result = {
+            "docs_changed": False,
+            "readme": False,
+            "architecture": False,
+            "glossary": False,
+            "whereiwas": False,
+            "modules": []
+        }
+
+        # Get all generated documentation records
+        cursor.execute("""
+            SELECT doc_path, doc_type, file_path, source_hash
+            FROM generated_documentation
+        """)
+        docs = cursor.fetchall()
+
+        if not docs:
+            # No docs generated yet - mark all as needing generation
+            result["docs_changed"] = True
+            result["readme"] = True
+            result["architecture"] = True
+            result["glossary"] = True
+            result["whereiwas"] = True
+            return result
+
+        # Check each documentation file
+        for doc_path, doc_type, source_files_str, stored_hash in docs:
+            # Parse source files (comma-separated)
+            source_files = source_files_str.split(",") if source_files_str else []
+
+            # Calculate current hash of source files
+            current_hash = self._calculate_source_files_hash(
+                project_path,
+                source_files
+            )
+
+            # Compare hashes
+            if current_hash != stored_hash:
+                result["docs_changed"] = True
+
+                # Mark specific doc type as changed
+                if doc_type == "readme":
+                    result["readme"] = True
+                elif doc_type == "architecture":
+                    result["architecture"] = True
+                elif doc_type == "glossary":
+                    result["glossary"] = True
+                elif doc_type == "whereiwas":
+                    result["whereiwas"] = True
+                elif doc_type == "module":
+                    result["modules"].append(doc_path)
+
+        return result
+
+    def _calculate_source_files_hash(
+        self,
+        project_root: Path,
+        source_files: List[str]
+    ) -> str:
+        """
+        Calculate combined hash of multiple source files.
+
+        Args:
+            project_root: Project root directory
+            source_files: List of relative file paths
+
+        Returns:
+            SHA256 hash of combined file contents
+        """
+        hasher = hashlib.sha256()
+
+        for file_path in sorted(source_files):
+            if not file_path.strip():
+                continue
+
+            full_path = project_root / file_path
+            try:
+                if full_path.exists():
+                    content = full_path.read_bytes()
+                    hasher.update(content)
+            except Exception:
+                # File might have been deleted - treat as changed
+                pass
+
+        return hasher.hexdigest()
