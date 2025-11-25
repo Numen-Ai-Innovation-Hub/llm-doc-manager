@@ -76,7 +76,7 @@ class DocsGenerator:
         # Paths
         self.project_root = Path(config.project_root)
         self.docs_dir = self.project_root / "docs"
-        self.api_dir = self.docs_dir / "api"
+        self.module_dir = self.docs_dir / "module"
         self.templates_dir = Path(__file__).parent.parent / "templates"
 
         # Cache for AST analysis results
@@ -220,7 +220,7 @@ class DocsGenerator:
     def _create_docs_structure(self) -> None:
         """Create docs/ directory structure."""
         self.docs_dir.mkdir(exist_ok=True)
-        self.api_dir.mkdir(parents=True, exist_ok=True)
+        self.api_dir.mkdir(exist_ok=True)
         logger.debug(f"Created docs structure at {self.docs_dir}")
 
     def _analyze_all_modules(self) -> Dict[str, ModuleInfo]:
