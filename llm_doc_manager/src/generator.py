@@ -120,7 +120,10 @@ class DocsGenerator:
 
             # 3. Build import graph
             logger.info("Building import dependency graph")
-            import_relationships = self.analyzer.build_import_graph()
+            import_relationships = self.analyzer.build_import_graph(
+                project_root=self.project_root,
+                restrict_to_files=list(modules.keys())
+            )
             # Convert ImportRelationship objects to dicts for JSON serialization
             self._import_graph = [
                 {
@@ -131,6 +134,9 @@ class DocsGenerator:
                 }
                 for rel in import_relationships
             ]
+
+            if isinstance(self._import_graph, list) and len(self._import_graph) > 500:
+                self._import_graph = self._import_graph[:500]
 
             # 4. Detect entry points
             logger.info("Detecting entry points")
@@ -298,7 +304,7 @@ class DocsGenerator:
         """
         Determine if file should be skipped in documentation generation.
 
-        IMPORTANT: Only files with valid @llm_module_start and @llm_module_end markers
+        IMPORTANT: Only files with valid @llm-module-start and @llm-module-end markers
         are included in documentation generation.
         """
         skip_patterns = [
@@ -871,6 +877,7 @@ class DocsGenerator:
         return {
             "project_name": project_name,
             "version": version,
+            "language": "Python",
             "description": description,
             "project_structure": project_structure,
             "key_components": key_components_str,
@@ -903,7 +910,7 @@ class DocsGenerator:
             parts = Path(path).parts
             for i in range(len(parts)):
                 dirs.add("/".join(parts[:i+1]))
-        directory_structure = "\n".join(sorted(dirs))
+        directory_structure = "\n".join(sorted(list(dirs))[:100])
 
         # Metrics
         metrics = self._calculate_statistics(modules)

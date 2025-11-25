@@ -22,6 +22,7 @@ from .constants import TASK_TYPE_LABELS
 from .database import DatabaseManager
 from ..utils.marker_validator import MarkerValidator, ValidationLevel
 from ..utils.llm_client import LLMClientFactory
+from ..utils.logger_setup import LoggerManager
 
 
 def _get_hierarchical_blocks(changed_names: set, blocks: list) -> list:
@@ -82,7 +83,7 @@ def _get_hierarchical_blocks(changed_names: set, blocks: list) -> list:
 @click.version_option(version="0.1.0")
 def cli():
     """LLM Documentation Manager - Automated documentation validation and generation."""
-    pass
+    LoggerManager.setup_logging(console=True)
 
 
 @cli.command()

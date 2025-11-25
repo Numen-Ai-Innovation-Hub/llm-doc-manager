@@ -171,7 +171,7 @@ class ASTAnalyzer:
             complexity=complexity
         )
 
-    def build_import_graph(self, project_root: Optional[Path] = None) -> List[ImportRelationship]:
+    def build_import_graph(self, project_root: Optional[Path] = None, restrict_to_files: Optional[List[str]] = None) -> List[ImportRelationship]:
         """
         Build complete import graph for the project.
 
@@ -184,8 +184,10 @@ class ASTAnalyzer:
         project_root = project_root or self.project_root
         relationships = []
 
-        # Find all Python files
-        python_files = list(project_root.rglob('*.py'))
+        if restrict_to_files:
+            python_files = [Path(f) if Path(f).is_absolute() else (project_root / f) for f in restrict_to_files]
+        else:
+            python_files = list(project_root.rglob('*.py'))
 
         for file_path in python_files:
             try:
