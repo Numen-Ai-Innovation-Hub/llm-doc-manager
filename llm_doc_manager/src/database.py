@@ -54,24 +54,70 @@ class DatabaseManager:
         # ============================================
         # TABLE 1: documentation_tasks (workflow)
         # ============================================
+        # Check if table exists and has priority column (legacy schema)
         cursor.execute("""
-            CREATE TABLE IF NOT EXISTS documentation_tasks (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                file_path TEXT NOT NULL,
-                line_number INTEGER NOT NULL,
-                task_type TEXT NOT NULL,
-                marker_text TEXT,
-                context TEXT,
-                priority INTEGER DEFAULT 5,
-                status TEXT DEFAULT 'pending',
-                created_at TEXT DEFAULT CURRENT_TIMESTAMP,
-                updated_at TEXT DEFAULT CURRENT_TIMESTAMP,
-                error_message TEXT,
-                suggestion TEXT,
-                accepted INTEGER DEFAULT 0,
-                scope_name TEXT
-            )
+            SELECT sql FROM sqlite_master
+            WHERE type='table' AND name='documentation_tasks'
         """)
+        existing_schema = cursor.fetchone()
+
+        if existing_schema and 'priority' in existing_schema[0]:
+            # Migration: Remove priority column by recreating table
+            logger.info("Migrating documentation_tasks: removing priority column")
+
+            # Create new table without priority
+            cursor.execute("""
+                CREATE TABLE documentation_tasks_new (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    file_path TEXT NOT NULL,
+                    line_number INTEGER NOT NULL,
+                    task_type TEXT NOT NULL,
+                    marker_text TEXT,
+                    context TEXT,
+                    status TEXT DEFAULT 'pending',
+                    created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+                    updated_at TEXT DEFAULT CURRENT_TIMESTAMP,
+                    error_message TEXT,
+                    suggestion TEXT,
+                    accepted INTEGER DEFAULT 0,
+                    scope_name TEXT
+                )
+            """)
+
+            # Copy data (excluding priority column)
+            cursor.execute("""
+                INSERT INTO documentation_tasks_new
+                (id, file_path, line_number, task_type, marker_text, context,
+                 status, created_at, updated_at, error_message, suggestion, accepted, scope_name)
+                SELECT id, file_path, line_number, task_type, marker_text, context,
+                       status, created_at, updated_at, error_message, suggestion, accepted, scope_name
+                FROM documentation_tasks
+            """)
+
+            # Drop old table and rename new one
+            cursor.execute("DROP TABLE documentation_tasks")
+            cursor.execute("ALTER TABLE documentation_tasks_new RENAME TO documentation_tasks")
+
+            logger.info("Migration completed: priority column removed")
+        else:
+            # Create table from scratch (no priority column)
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS documentation_tasks (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    file_path TEXT NOT NULL,
+                    line_number INTEGER NOT NULL,
+                    task_type TEXT NOT NULL,
+                    marker_text TEXT,
+                    context TEXT,
+                    status TEXT DEFAULT 'pending',
+                    created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+                    updated_at TEXT DEFAULT CURRENT_TIMESTAMP,
+                    error_message TEXT,
+                    suggestion TEXT,
+                    accepted INTEGER DEFAULT 0,
+                    scope_name TEXT
+                )
+            """)
 
         cursor.execute("""
             CREATE INDEX IF NOT EXISTS idx_documentation_tasks_status

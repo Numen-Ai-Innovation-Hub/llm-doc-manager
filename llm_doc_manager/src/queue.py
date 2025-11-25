@@ -25,20 +25,6 @@ class TaskStatus(Enum):
     SKIPPED = "skipped"
 
 
-class TaskPriority(Enum):
-    """Priority levels for tasks.
-
-    Used to determine processing order in the queue.
-    Tasks are processed in descending priority order (HIGH before MEDIUM).
-
-    Values:
-        MEDIUM (5): Validation tasks - improving existing documentation
-        HIGH (10): Generation tasks - adding missing documentation
-    """
-    MEDIUM = 5
-    HIGH = 10
-
-
 @dataclass
 class DocTask:
     """Represents a documentation task."""
@@ -48,7 +34,6 @@ class DocTask:
     task_type: str = ""  # validate_docstring, generate_docstring
     marker_text: str = ""
     context: str = ""  # Surrounding code context
-    priority: int = TaskPriority.MEDIUM.value
     status: str = TaskStatus.PENDING.value
     created_at: Optional[str] = None
     updated_at: Optional[str] = None
@@ -145,7 +130,10 @@ class QueueManager:
 
     def get_pending_tasks(self, limit: Optional[int] = None) -> List[DocTask]:
         """
-        Get pending tasks ordered by priority.
+        Get pending tasks ordered by creation time.
+
+        Tasks are returned in FIFO order (first created, first returned).
+        The actual processing order is determined by TASK_PROCESSING_ORDER constant.
 
         Args:
             limit: Maximum number of tasks to return
@@ -160,7 +148,7 @@ class QueueManager:
         query = """
             SELECT * FROM documentation_tasks
             WHERE status = ?
-            ORDER BY priority DESC, created_at ASC
+            ORDER BY created_at ASC
         """
         if limit:
             query += f" LIMIT {limit}"
@@ -260,7 +248,7 @@ class QueueManager:
             status: Task status
 
         Returns:
-            List of tasks with the status
+            List of tasks with the status ordered by creation time
         """
         conn = sqlite3.connect(self.db_path)
         conn.row_factory = sqlite3.Row
@@ -269,7 +257,7 @@ class QueueManager:
         cursor.execute("""
             SELECT * FROM documentation_tasks
             WHERE status = ?
-            ORDER BY priority DESC, created_at ASC
+            ORDER BY created_at ASC
         """, (status.value,))
 
         rows = cursor.fetchall()

@@ -109,16 +109,22 @@ class ContentHasher:
             # Determine scope type and name based on marker type
             # Note: function_name is used for both functions AND classes
             # With strict validation in marker_detector, function_name is always set
-            if block.marker_type.value == 'class_doc':
+            if block.marker_type.value == 'module_doc':
+                scope_type = 'MODULE'
+                scope_name = block.function_name or 'module'  # Module name or default
+            elif block.marker_type.value == 'class_doc':
                 scope_type = 'CLASS'
                 scope_name = block.function_name  # Always set by validation
             elif block.marker_type.value == 'docstring':
                 scope_type = 'METHOD'
                 scope_name = block.function_name  # Always set by validation
-            else:
-                # Comment blocks - always have block_{line} naming
-                scope_type = 'METHOD'
+            elif block.marker_type.value == 'comment':
+                scope_type = 'COMMENT'
                 scope_name = block.function_name  # Always set to f"block_{start_line}"
+            else:
+                # Fallback for unknown marker types
+                scope_type = 'METHOD'
+                scope_name = block.function_name or 'unknown'
 
             # Calculate hash of block content
             content_hash = ContentHasher.calculate_hash(block.full_code)
@@ -143,12 +149,14 @@ class ContentHasher:
             blocks: List of DetectedBlock objects
 
         Returns:
-            Dict with keys 'file', 'classes', 'methods' containing CodeHash lists
+            Dict with keys 'file', 'modules', 'classes', 'methods', 'comments' containing CodeHash lists
         """
         result = {
             'file': [],
+            'modules': [],
             'classes': [],
-            'methods': []
+            'methods': [],
+            'comments': []
         }
 
         # File-level hash
@@ -159,9 +167,13 @@ class ContentHasher:
         block_hashes = ContentHasher.calculate_block_hashes(file_path, blocks)
 
         for hash_obj in block_hashes:
-            if hash_obj.scope_type == 'CLASS':
+            if hash_obj.scope_type == 'MODULE':
+                result['modules'].append(hash_obj)
+            elif hash_obj.scope_type == 'CLASS':
                 result['classes'].append(hash_obj)
             elif hash_obj.scope_type == 'METHOD':
                 result['methods'].append(hash_obj)
+            elif hash_obj.scope_type == 'COMMENT':
+                result['comments'].append(hash_obj)
 
         return result

@@ -215,7 +215,7 @@ def calculate_metrics(source_code: str) -> Tuple[int, str]:
 **Responsabilidade**: Orquestrar geração de TODA documentação
 
 **Fluxo do `generate_all_docs()`**:
-1. Cria estrutura `docs/` e `docs/api/`
+1. Cria estrutura `docs/` e `docs/module/`
 2. Analisa todos os módulos Python com AST
 3. Constrói import graph
 4. Detecta entry points
@@ -406,7 +406,7 @@ llm-doc-manager sync
 #     ✓ docs/architecture.md
 #     ✓ docs/glossary.md
 #     ✓ docs/whereiwas.md
-#     ✓ docs/api/src/utils.md
+#     ✓ docs/module/src/utils.md
 #     ...
 #   📂 Documentation available at: docs/
 #   📖 Start with: docs/readme.md or docs/index.md

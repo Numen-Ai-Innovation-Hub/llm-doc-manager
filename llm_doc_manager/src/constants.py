@@ -45,6 +45,6 @@ TASK_PROCESSING_ORDER = [
     'validate_class',     # Validate classes immediately after generation
     'generate_docstring', # 3rd - Method/function documentation
     'validate_docstring', # Validate methods immediately after generation
-    'generate_comment',   # 4th - Code comments (lowest priority)
+    'generate_comment',   # 4th - Code comments
     'validate_comment'    # Validate comments last
 ]

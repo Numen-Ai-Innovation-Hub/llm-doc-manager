@@ -18,7 +18,7 @@ from .hashing import HashStorage, StoredHash
 class ChangeReport:
     """Report of detected changes in a file."""
     file_path: str
-    scope: str  # 'NONE' | 'METHOD' | 'CLASS' | 'FILE'
+    scope: str  # 'NONE' | 'FILE' | 'MODULE' | 'CLASS' | 'METHOD' | 'COMMENT'
     changed_items: List[str]  # Names of changed scopes
     unchanged_items: List[str]  # Names of unchanged scopes
     new_items: List[str]  # Names of new scopes (not in DB)
@@ -93,12 +93,12 @@ class ChangeDetector:
             return [report], current_hashes
 
         # File changed - detect changes at all levels independently
-        # Report ALL detected changes (Option 1: Report BOTH CLASS + METHODS)
+        # Report ALL detected changes (MODULE + CLASS + METHOD + COMMENT)
 
-        # Check method level
-        method_changes = self._compare_scope_hashes(
-            current_hashes['methods'],
-            stored_hashes['methods']
+        # Check module level
+        module_changes = self._compare_scope_hashes(
+            current_hashes['modules'],
+            stored_hashes.get('modules', [])
         )
 
         # Check class level
@@ -107,8 +107,31 @@ class ChangeDetector:
             stored_hashes['classes']
         )
 
+        # Check method level
+        method_changes = self._compare_scope_hashes(
+            current_hashes['methods'],
+            stored_hashes['methods']
+        )
+
+        # Check comment level
+        comment_changes = self._compare_scope_hashes(
+            current_hashes['comments'],
+            stored_hashes.get('comments', [])
+        )
+
         # Collect all reports (can be multiple)
         reports = []
+
+        # Add module-level report if module changed
+        if module_changes['changed'] or module_changes['new']:
+            reports.append(ChangeReport(
+                file_path=file_path,
+                scope='MODULE',
+                changed_items=module_changes['changed'],
+                unchanged_items=module_changes['unchanged'],
+                new_items=module_changes['new'],
+                reason=self._format_module_reason(module_changes)
+            ))
 
         # Add class-level report if classes changed
         if class_changes['changed'] or class_changes['new']:
@@ -130,6 +153,17 @@ class ChangeDetector:
                 unchanged_items=method_changes['unchanged'],
                 new_items=method_changes['new'],
                 reason=self._format_method_reason(method_changes)
+            ))
+
+        # Add comment-level report if comments changed
+        if comment_changes['changed'] or comment_changes['new']:
+            reports.append(ChangeReport(
+                file_path=file_path,
+                scope='COMMENT',
+                changed_items=comment_changes['changed'],
+                unchanged_items=comment_changes['unchanged'],
+                new_items=comment_changes['new'],
+                reason=self._format_comment_reason(comment_changes)
             ))
 
         # If no changes detected at any level, file hash changed due to formatting only
@@ -209,6 +243,17 @@ class ChangeDetector:
             names.extend([h.scope_name for h in scope_list])
         return names
 
+    def _format_module_reason(self, changes: Dict[str, List[str]]) -> str:
+        """Format human-readable reason for module-level changes."""
+        parts = []
+
+        if changes['changed']:
+            parts.append(f"Module modified")
+        if changes['new']:
+            parts.append(f"New module")
+
+        return ' | '.join(parts)
+
     def _format_class_reason(self, changes: Dict[str, List[str]]) -> str:
         """Format human-readable reason for class-level changes."""
         parts = []
@@ -231,6 +276,17 @@ class ChangeDetector:
 
         return ' | '.join(parts)
 
+    def _format_comment_reason(self, changes: Dict[str, List[str]]) -> str:
+        """Format human-readable reason for comment-level changes."""
+        parts = []
+
+        if changes['changed']:
+            parts.append(f"{len(changes['changed'])} comment(s) modified")
+        if changes['new']:
+            parts.append(f"{len(changes['new'])} new comment(s)")
+
+        return ' | '.join(parts)
+
     def update_stored_hashes(self, file_path: str, current_hashes: Dict):
         """
         Update stored hashes for a file after processing.
@@ -242,36 +298,17 @@ class ChangeDetector:
         # Delete old hashes for this file
         self.storage.delete_file_hashes(file_path)
 
-        # Store new hashes
-        for hash_obj in current_hashes['file']:
-            self.storage.store_hash(
-                file_path=file_path,
-                scope_type=hash_obj.scope_type,
-                scope_name=hash_obj.scope_name,
-                content_hash=hash_obj.content_hash,
-                line_start=hash_obj.line_start,
-                line_end=hash_obj.line_end
-            )
-
-        for hash_obj in current_hashes['classes']:
-            self.storage.store_hash(
-                file_path=file_path,
-                scope_type=hash_obj.scope_type,
-                scope_name=hash_obj.scope_name,
-                content_hash=hash_obj.content_hash,
-                line_start=hash_obj.line_start,
-                line_end=hash_obj.line_end
-            )
-
-        for hash_obj in current_hashes['methods']:
-            self.storage.store_hash(
-                file_path=file_path,
-                scope_type=hash_obj.scope_type,
-                scope_name=hash_obj.scope_name,
-                content_hash=hash_obj.content_hash,
-                line_start=hash_obj.line_start,
-                line_end=hash_obj.line_end
-            )
+        # Store new hashes for all scope types
+        for scope_key in ['file', 'modules', 'classes', 'methods', 'comments']:
+            for hash_obj in current_hashes.get(scope_key, []):
+                self.storage.store_hash(
+                    file_path=file_path,
+                    scope_type=hash_obj.scope_type,
+                    scope_name=hash_obj.scope_name,
+                    content_hash=hash_obj.content_hash,
+                    line_start=hash_obj.line_start,
+                    line_end=hash_obj.line_end
+                )
 
     def detect_docs_changes(
         self,

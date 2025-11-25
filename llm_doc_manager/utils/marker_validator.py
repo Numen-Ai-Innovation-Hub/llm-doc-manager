@@ -124,6 +124,21 @@ class MarkerValidator:
                         marker_type=block.marker_type.value
                     ))
 
+                # Enforce module markers to wrap entire file: START at line 1 and END at last line
+                if block.marker_type == MarkerType.MODULE_DOC:
+                    last_line = len(lines)
+                    if block.start_line != 1 or block.end_line != last_line:
+                        issues.append(ValidationIssue(
+                            level=ValidationLevel.ERROR,
+                            message=(
+                                f"Module markers must wrap entire file: START at line 1 and END at line {last_line} "
+                                f"(found START {block.start_line}, END {block.end_line})"
+                            ),
+                            file_path=file_path,
+                            line_number=block.start_line,
+                            marker_type=block.marker_type.value
+                        ))
+
         except Exception as e:
             issues.append(ValidationIssue(
                 level=ValidationLevel.ERROR,
@@ -376,10 +391,9 @@ class MarkerValidator:
         """
         Create DocTasks for each marker found in the file.
 
-        This method creates tasks for:
-        - docstring markers: generate_docstring tasks (HIGH priority)
-        - class_doc markers: generate_class tasks (HIGH priority)
-        - comment markers: generate_comment tasks (MEDIUM priority)
+        Tasks are created in the order blocks appear in the file.
+        Processing order is determined by TASK_PROCESSING_ORDER constant:
+        - module_doc → class_doc → docstring → comment
 
         Args:
             file_path: Path to file to process
@@ -389,7 +403,7 @@ class MarkerValidator:
             Number of tasks created
         """
         # Import here to avoid circular dependency
-        from ..src.queue import QueueManager, DocTask, TaskPriority
+        from ..src.queue import QueueManager, DocTask
         from ..src.constants import MARKER_TO_TASK_TYPE
 
         queue = QueueManager()
@@ -399,20 +413,13 @@ class MarkerValidator:
             # Use centralized mapping
             task_type = MARKER_TO_TASK_TYPE.get(block.marker_type, 'generate_docstring')
 
-            # Determine priority (HIGH for docstrings, MEDIUM for comments)
-            if block.marker_type in [MarkerType.DOCSTRING, MarkerType.CLASS_DOC]:
-                priority = TaskPriority.HIGH.value
-            else:
-                priority = TaskPriority.MEDIUM.value
-
-            # Create task
+            # Create task (no priority - processing order determined by TASK_PROCESSING_ORDER)
             task = DocTask(
                 file_path=file_path,
                 line_number=block.start_line,
                 task_type=task_type,
                 marker_text=block.marker_type.value,
                 context=block.full_code,
-                priority=priority,
                 scope_name=block.function_name or 'unknown'
             )
 

@@ -534,7 +534,7 @@ docs/api/
 | **glossary.md** | Nomes de classes/funções/variáveis + docstrings | LLM extrai termos técnicos e define |
 | **whereiwas.md** | `git log --since="30 days"` | LLM agrupa commits por tema |
 | **index.json** | AST parsing + module docstrings + imports | Script Python (análise estática) |
-| **api/*.md** | Module/class/function docstrings + AST | LLM formata seguindo template |
+| **module/*.md** | Module/class/function docstrings + AST | LLM formata seguindo template |
 
 ---
 
@@ -548,7 +548,7 @@ changed_files = detector.detect_changes()
 
 # 2. Identifica docs afetados
 for file in changed_files:
-    doc_path = f"docs/api/{file.replace('src/', 'src/').replace('.py', '.md')}"
+    doc_path = f"docs/module/{file.replace('src/', 'src/').replace('.py', '.md')}"
 
     # 3. Marca para regeneração
     docs_to_regenerate.append(doc_path)
@@ -566,10 +566,10 @@ if queue_empty:
 -- Após gerar cada doc
 INSERT INTO generated_documentation (
     file_path,           -- src/scanner.py
-    doc_path,            -- docs/api/src/scanner.md
+    doc_path,            -- docs/module/src/scanner.md
     doc_type,            -- 'module_complete'
     source_hash,         -- hash de src/scanner.py
-    content_hash,        -- hash de docs/api/src/scanner.md
+    content_hash,        -- hash de docs/module/src/scanner.md
     metadata             -- JSON com front matter
 ) VALUES (?, ?, ?, ?, ?, ?);
 ```
@@ -578,7 +578,7 @@ INSERT INTO generated_documentation (
 ```python
 # Compara source_hash
 if current_hash(src/scanner.py) != stored_source_hash:
-    regenerate(docs/api/src/scanner.md)
+    regenerate(docs/module/src/scanner.md)
 ```
 
 ---
@@ -587,7 +587,7 @@ if current_hash(src/scanner.py) != stored_source_hash:
 
 ### Arquivos Criados:
 1. ✅ **6 arquivos raiz** (readme, index, architecture, glossary, whereiwas, index.json)
-2. ✅ **1 arquivo por módulo** em `docs/api/` (espelha src/)
+2. ✅ **1 arquivo por módulo** em `docs/module/` (espelha src/)
 3. ✅ **Conteúdo completo**: técnico (API) + conceitual (purpose, deps, I/O) em um só arquivo
 
 ### RAG/IA Requirements:

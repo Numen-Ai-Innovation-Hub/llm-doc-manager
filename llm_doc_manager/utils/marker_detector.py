@@ -26,7 +26,7 @@ from typing import Dict, List, Optional
 from enum import Enum
 
 from .docstring_handler import find_docstring_location
-from ..src.queue import TaskPriority
+# TaskPriority removed - using TASK_PROCESSING_ORDER for deterministic ordering
 
 
 class MarkerValidationError(Exception):

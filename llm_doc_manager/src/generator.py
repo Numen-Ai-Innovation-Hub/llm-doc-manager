@@ -1,4 +1,3 @@
-# @llm-module-start
 """
 Documentation generator orchestrator.
 
@@ -6,7 +5,6 @@ This module coordinates the entire documentation generation process,
 using AST analysis, LLM prompts, and template rendering to create
 comprehensive project documentation.
 """
-# @llm-module-end
 
 import ast
 import json
@@ -19,7 +17,7 @@ from typing import Dict, List, Optional, Any, Set
 from dataclasses import dataclass, asdict
 
 from llm_doc_manager.src.config import Config
-from llm_doc_manager.src.database import Database
+from llm_doc_manager.src.database import DatabaseManager
 from llm_doc_manager.src.detector import ChangeDetector
 from llm_doc_manager.utils.ast_analyzer import ASTAnalyzer, ModuleInfo
 
@@ -54,7 +52,7 @@ class DocsGenerator:
     def __init__(
         self,
         config: Config,
-        db: Database,
+        db: DatabaseManager,
         detector: ChangeDetector,
         llm_client: Any
     ):
@@ -220,7 +218,7 @@ class DocsGenerator:
     def _create_docs_structure(self) -> None:
         """Create docs/ directory structure."""
         self.docs_dir.mkdir(exist_ok=True)
-        self.api_dir.mkdir(exist_ok=True)
+        self.module_dir.mkdir(parents=True, exist_ok=True)
         logger.debug(f"Created docs structure at {self.docs_dir}")
 
     def _analyze_all_modules(self) -> Dict[str, ModuleInfo]:
@@ -493,7 +491,7 @@ class DocsGenerator:
         """
         Generate complete documentation for a single module.
 
-        Creates docs/api/path/to/module.md with:
+        Creates docs/module/path/to/module.md with:
         - YAML front matter
         - Overview and purpose
         - Dependencies
@@ -512,9 +510,9 @@ class DocsGenerator:
         """
         logger.debug(f"Generating documentation for {module_path}")
 
-        # Calculate doc path (mirror source structure in api/)
+        # Calculate doc path (mirror source structure in module/)
         module_parts = Path(module_path).with_suffix("").parts
-        doc_rel_path = Path("docs/api") / Path(*module_parts).with_suffix(".md")
+        doc_rel_path = Path("docs/module") / Path(*module_parts).with_suffix(".md")
         doc_path = self.project_root / doc_rel_path
 
         if not force and self._is_doc_current(str(doc_rel_path), {module_path: module_info}):
@@ -591,6 +589,7 @@ class DocsGenerator:
             index["modules"][module_path] = {
                 "path": module_info.module_path,
                 "name": module_info.module_name,
+                "doc_path": f"docs/module/{module_path.replace('.py', '.md')}",
                 "docstring": module_info.module_docstring,
                 "imports_internal": module_info.imports_internal,
                 "imports_external": module_info.imports_external,
@@ -703,8 +702,8 @@ class DocsGenerator:
 
             for module_path in modules_by_dir[dir_name]:
                 module_info = modules[module_path]
-                # Convert src/generator.py -> api/src/generator.md
-                doc_path = Path("api") / Path(module_path).with_suffix(".md")
+                # Convert src/generator.py -> module/src/generator.md
+                doc_path = Path("module") / Path(module_path).with_suffix(".md")
 
                 # Extract brief description from docstring
                 brief = module_info.module_docstring or "No description"
@@ -1063,7 +1062,8 @@ class DocsGenerator:
             True if doc is current, False if needs regeneration
         """
         # Query database for last generation
-        cursor = self.db.conn.cursor()
+        conn = self.db.get_connection()
+        cursor = conn.cursor()
         cursor.execute(
             "SELECT source_hash FROM generated_documentation WHERE doc_path = ?",
             (doc_path,)
@@ -1127,7 +1127,8 @@ class DocsGenerator:
         metadata_json = json.dumps(metadata) if metadata else None
 
         # Upsert into database
-        cursor = self.db.conn.cursor()
+        conn = self.db.get_connection()
+        cursor = conn.cursor()
         cursor.execute("""
             INSERT INTO generated_documentation
             (doc_path, doc_type, file_path, source_hash, content_hash, metadata)
@@ -1147,7 +1148,7 @@ class DocsGenerator:
             content_hash,
             metadata_json
         ))
-        self.db.conn.commit()
+        conn.commit()
 
     def _extract_module_metadata(self, module_info: ModuleInfo) -> Dict:
         """Extract metadata from ModuleInfo for storage."""
@@ -1197,7 +1198,8 @@ class DocsGenerator:
 
     def _get_last_generation_time(self, doc_path: str) -> Optional[datetime]:
         """Get timestamp of last generation for a doc."""
-        cursor = self.db.conn.cursor()
+        conn = self.db.get_connection()
+        cursor = conn.cursor()
         cursor.execute(
             "SELECT generated_at FROM generated_documentation WHERE doc_path = ?",
             (doc_path,)

@@ -15,7 +15,7 @@ from dataclasses import dataclass
 class StoredHash:
     """Represents a hash stored in the database."""
     file_path: str
-    scope_type: str  # 'FILE' | 'CLASS' | 'METHOD'
+    scope_type: str  # 'FILE' | 'MODULE' | 'CLASS' | 'METHOD' | 'COMMENT'
     scope_name: str
     content_hash: str
     line_start: int
@@ -53,7 +53,7 @@ class HashStorage:
 
         Args:
             file_path: Path to file
-            scope_type: 'FILE' | 'CLASS' | 'METHOD'
+            scope_type: 'FILE' | 'MODULE' | 'CLASS' | 'METHOD' | 'COMMENT'
             scope_name: Name of scope
 
         Returns:
@@ -86,7 +86,7 @@ class HashStorage:
 
         Args:
             file_path: Path to file
-            scope_type: 'FILE' | 'CLASS' | 'METHOD'
+            scope_type: 'FILE' | 'MODULE' | 'CLASS' | 'METHOD' | 'COMMENT'
             scope_name: Name of scope
             content_hash: SHA256 hash
             line_start: Starting line number
@@ -112,7 +112,7 @@ class HashStorage:
             file_path: Path to file
 
         Returns:
-            Dict with keys 'file', 'classes', 'methods' containing StoredHash lists
+            Dict with keys 'file', 'modules', 'classes', 'methods', 'comments' containing StoredHash lists
         """
         conn = sqlite3.connect(self.db_path)
         cursor = conn.cursor()
@@ -128,8 +128,10 @@ class HashStorage:
 
         result = {
             'file': [],
+            'modules': [],
             'classes': [],
-            'methods': []
+            'methods': [],
+            'comments': []
         }
 
         for row in rows:
@@ -144,10 +146,14 @@ class HashStorage:
 
             if stored.scope_type == 'FILE':
                 result['file'].append(stored)
+            elif stored.scope_type == 'MODULE':
+                result['modules'].append(stored)
             elif stored.scope_type == 'CLASS':
                 result['classes'].append(stored)
             elif stored.scope_type == 'METHOD':
                 result['methods'].append(stored)
+            elif stored.scope_type == 'COMMENT':
+                result['comments'].append(stored)
 
         return result
 

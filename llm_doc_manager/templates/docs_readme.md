@@ -147,7 +147,7 @@ project-name run
 
 - **[Full Documentation](index.md)** - Complete guide
 - **[Architecture](architecture.md)** - System design
-- **[API Reference](api/)** - All modules
+- **[API Reference](module/)** - All modules
 - **[Development Journal](whereiwas.md)** - Project history
 
 ---

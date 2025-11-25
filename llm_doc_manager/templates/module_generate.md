@@ -10,7 +10,7 @@ Extended description (2-4 sentences):
 - When/why to use this module
 
 Typical usage example (if applicable):
-    from {module_path} import ClassName
+    from module_path import ClassName
     instance = ClassName(args)
     result = instance.method()
 
@@ -20,7 +20,7 @@ Note (optional, only if critical):
 ## STRICT RULES:
 1. Summary MUST be one line, present tense, ending with period
 2. Extended description: 2-4 sentences maximum, focus on module purpose
-3. Mention key exports (classes, functions) briefly
+3. Mention key exports (classes, functions) briefly by analyzing the code
 4. Include typical usage if the module has a clear entry point
 5. Use 4-space indentation
 6. **BE CONCISE**: Focus on what the module provides, not implementation details
@@ -29,13 +29,7 @@ Note (optional, only if critical):
 ## Module Context:
 
 File: {file_path}
-Module: {module_name}
-
-### Imports:
-{imports}
-
-### Exports (Classes and Functions):
-{exports}
+Line: {line_number}
 
 ### Complete Module Code:
 ```python
@@ -43,10 +37,17 @@ Module: {module_name}
 ```
 
 ## Task:
-Generate ONLY the module docstring content (without the triple quotes).
+Analyze the complete module code above and generate ONLY the module docstring content (without the triple quotes).
+
+**What to extract from the code:**
+- Identify main imports (what external dependencies are used)
+- Identify key exports (public classes, functions)
+- Understand the module's purpose from its structure and components
+
+**What to write:**
 - Write ONE clear sentence summarizing what this module provides
 - Add 2-4 sentences explaining its purpose and key components
 - Mention main classes/functions that users will interact with
-- Include a typical usage example if applicable
+- Include a typical usage example based on the actual imports/exports in the code
 - **AVOID**: Implementation details, internal helpers, complex architecture explanations
 - **BE DIRECT**: Users want to know what they can do with this module

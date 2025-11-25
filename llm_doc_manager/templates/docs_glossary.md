@@ -114,7 +114,7 @@ Technical terms and concepts used in this project.
 
 5. **Cross-reference** (when relevant):
    - "See also: [Related Term]"
-   - Link to docs: "See [Module Name](api/module.md) for details"
+   - Link to docs: "See [Module Name](module/module.md) for details"
 
 ## ORGANIZATION
 
@@ -137,7 +137,7 @@ When terms relate:
 - Link to API docs when applicable
 
 Example:
-**Task**: Database record representing documentation work to be done. Stored in documentation_tasks table with status (pending, completed, failed). See also: [Queue](#queue), [API: QueueManager](api/queue.md).
+**Task**: Database record representing documentation work to be done. Stored in documentation_tasks table with status (pending, completed, failed). See also: [Queue](#queue), [API: QueueManager](module/queue.md).
 
 ## CRITICAL RULES
 

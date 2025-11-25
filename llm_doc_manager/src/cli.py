@@ -11,7 +11,7 @@ from pathlib import Path
 from typing import Optional
 
 from .config import Config, ConfigManager
-from .queue import QueueManager, TaskStatus, TaskPriority
+from .queue import QueueManager, TaskStatus
 from .scanner import Scanner
 from .processor import Processor, ProcessResult
 from .applier import Applier, Suggestion
@@ -19,8 +19,62 @@ from .hashing import HashStorage
 from .detector import ChangeDetector
 from .generator import DocsGenerator
 from .constants import TASK_TYPE_LABELS
-from .database import Database
+from .database import DatabaseManager
 from ..utils.marker_validator import MarkerValidator, ValidationLevel
+
+
+def _get_hierarchical_blocks(changed_names: set, blocks: list) -> list:
+    """
+    Get all blocks that should have tasks created based on hierarchical changes.
+
+    When a child element changes, all parent elements should also have tasks created:
+    - COMMENT change → include METHOD, CLASS, MODULE parents
+    - METHOD change → include CLASS, MODULE parents
+    - CLASS change → include MODULE parent
+    - MODULE change → only MODULE itself
+
+    Args:
+        changed_names: Set of scope names that changed (from detect_changes)
+        blocks: List of all DetectedBlock objects
+
+    Returns:
+        List of blocks that should have tasks created (including parents)
+    """
+    # Use set to avoid duplicates, then convert to list
+    blocks_to_process_set = set()
+
+    # First pass: collect all directly changed blocks
+    changed_blocks = []
+    for block in blocks:
+        if block.function_name in changed_names:
+            blocks_to_process_set.add(id(block))  # Use object id as unique identifier
+            changed_blocks.append(block)
+
+    # Second pass: find all parent blocks
+    # A parent contains a child if its line range fully encompasses the child's range
+    for block in blocks:
+        # Skip if already included as directly changed
+        if id(block) in blocks_to_process_set:
+            continue
+
+        # Check if this block is a parent of any changed block
+        for changed_block in changed_blocks:
+            # Parent must contain child's entire range AND be a different block
+            is_parent = (
+                block.start_line <= changed_block.start_line and
+                block.end_line >= changed_block.end_line and
+                # Ensure it's not the same block (compare line ranges)
+                not (block.start_line == changed_block.start_line and
+                     block.end_line == changed_block.end_line)
+            )
+
+            if is_parent:
+                blocks_to_process_set.add(id(block))
+                # Once identified as parent, no need to check other children
+                break
+
+    # Return blocks in original order (preserve file order)
+    return [block for block in blocks if id(block) in blocks_to_process_set]
 
 
 @click.group()
@@ -173,6 +227,11 @@ def sync(path, force):
                         continue
                     elif change_report.scope == 'FILE':
                         click.echo(f"  📄 {file_path} - New file")
+                    elif change_report.scope == 'MODULE':
+                        changed_names = set(change_report.changed_items + change_report.new_items)
+                        click.echo(f"  📦 {file_path} - {change_report.reason}:")
+                        for name in sorted(changed_names):
+                            click.echo(f"     {name}")
                     elif change_report.scope == 'CLASS':
                         changed_names = set(change_report.changed_items + change_report.new_items)
                         click.echo(f"  🔹 {file_path} - {change_report.reason}:")
@@ -183,22 +242,30 @@ def sync(path, force):
                         click.echo(f"  🔸 {file_path} - {change_report.reason}:")
                         for name in sorted(changed_names):
                             click.echo(f"     {name}")
+                    elif change_report.scope == 'COMMENT':
+                        changed_names = set(change_report.changed_items + change_report.new_items)
+                        click.echo(f"  💬 {file_path} - {change_report.reason}:")
+                        for name in sorted(changed_names):
+                            click.echo(f"     {name}")
 
             # Create tasks using MarkerValidator (if force OR new file, create all tasks)
             if force or any(r.scope == 'FILE' for r in change_reports):
                 # Create tasks for ALL blocks (pass blocks to avoid re-detection)
                 file_tasks = validator.create_tasks_from_validation(str(file_path), blocks)
                 tasks_created += file_tasks
+                # No token savings when processing all blocks
             else:
-                # Create tasks only for changed blocks (filter blocks first)
-                changed_blocks = [block for block in blocks if block.function_name in all_changed_names]
+                # Create tasks for changed blocks AND their hierarchical parents
+                changed_blocks = _get_hierarchical_blocks(all_changed_names, blocks)
                 file_tasks = validator.create_tasks_from_validation(str(file_path), changed_blocks)
                 tasks_created += file_tasks
 
-            # Calculate token savings for unchanged blocks
-            for block in blocks:
-                if block.function_name not in all_changed_names:
-                    token_savings += 500
+                # Calculate token savings for blocks that won't be processed
+                # This includes blocks that didn't change AND are not parents of changed blocks
+                processed_block_ids = {id(block) for block in changed_blocks}
+                for block in blocks:
+                    if id(block) not in processed_block_ids:
+                        token_savings += 500
 
             # Update stored hashes after creating tasks (reuse calculated hashes)
             detector.update_stored_hashes(file_path, current_hashes)
@@ -224,11 +291,11 @@ def sync(path, force):
 
                 try:
                     # Initialize components for docs generation
-                    db = Database()
+                    db_manager = DatabaseManager()
                     processor = Processor(config, queue_manager)
                     docs_generator = DocsGenerator(
                         config=config,
-                        db=db,
+                        db=db_manager,
                         detector=detector,
                         llm_client=processor.llm_client
                     )
@@ -237,7 +304,7 @@ def sync(path, force):
                     if not force:
                         docs_changes = detector.detect_docs_changes(
                             project_root=config.project_root,
-                            db_connection=db.conn
+                            db_connection=db_manager.get_connection()
                         )
 
                         if not docs_changes["docs_changed"]:

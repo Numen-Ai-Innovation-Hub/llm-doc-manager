@@ -4,7 +4,7 @@ from .applier import Applier, Suggestion
 from .cli import cli, main
 from .config import Config, ConfigManager, LLMConfig, ScanningConfig, OutputConfig
 from .processor import Processor, ProcessResult
-from .queue import QueueManager, DocTask, TaskStatus, TaskPriority
+from .queue import QueueManager, DocTask, TaskStatus
 from .scanner import Scanner, ScanResult
 
 __all__ = [
@@ -27,7 +27,6 @@ __all__ = [
     "QueueManager",
     "DocTask",
     "TaskStatus",
-    "TaskPriority",
     # Scanner
     "Scanner",
     "ScanResult",

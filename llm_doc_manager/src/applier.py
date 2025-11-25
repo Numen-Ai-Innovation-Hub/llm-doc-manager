@@ -140,7 +140,11 @@ class Applier:
         """
         lines = content.split('\n')
 
-        if task_type in ["generate_docstring", "validate_docstring"]:
+        if task_type in ["generate_module", "validate_module"]:
+            # Replace or insert module docstring
+            return self._replace_docstring(lines, line_number, original_text, suggested_text, '@llm-module')
+
+        elif task_type in ["generate_docstring", "validate_docstring"]:
             # Replace or insert docstring
             return self._replace_docstring(lines, line_number, original_text, suggested_text, '@llm-doc')
 
@@ -154,6 +158,7 @@ class Applier:
 
         else:
             # Unsupported task type
+            logger.warning(f"Unsupported task type '{task_type}' - skipping application")
             return content
 
     def _replace_docstring(self, lines: List[str], line_number: int,
@@ -166,7 +171,7 @@ class Applier:
             line_number: EXTERNAL (1-indexed) line number where marker start is
             original_text: Original docstring (if any)
             suggested_text: New docstring
-            marker_prefix: Marker prefix (@llm-doc or @llm-class)
+            marker_prefix: Marker prefix (@llm-doc, @llm-class, or @llm-module)
 
         Returns:
             Modified content
@@ -180,6 +185,10 @@ class Applier:
                 f"Invalid line number {line_number} for marker. "
                 f"File has {len(lines)} lines (valid range: 1-{len(lines)})"
             )
+
+        # Special handling for MODULE markers (@llm-module)
+        if marker_prefix == '@llm-module':
+            return self._replace_module_docstring(lines, suggested_text)
 
         # Convert EXTERNAL (1-indexed) to INTERNAL (0-indexed)
         # line_number points to marker start (e.g., line 10 in editor = index 9)
@@ -396,6 +405,78 @@ class Applier:
 
         # NOTE: Markers are preserved in the code for hash-based tracking.
         # They will NOT be removed after documentation is applied.
+
+        return '\n'.join(lines)
+
+    def _replace_module_docstring(self, lines: List[str], suggested_text: str) -> str:
+        """
+        Replace or insert module-level docstring at the top of the file.
+
+        Module docstrings appear at the very beginning of the file,
+        before any imports or code, but after the @llm-module-start marker.
+
+        Args:
+            lines: File lines (0-indexed array)
+            suggested_text: New module docstring
+
+        Returns:
+            Modified content
+        """
+        # Module docstrings are at the TOP of the file (no indentation)
+        indent = ""
+
+        # Find the @llm-module-start marker (should be line 0)
+        marker_start_idx = None
+        for i, line in enumerate(lines):
+            if line.strip().startswith('# @llm-module-start'):
+                marker_start_idx = i
+                break
+
+        if marker_start_idx is None:
+            logger.warning("Could not find @llm-module-start marker, inserting at top of file")
+            marker_start_idx = -1  # Will insert at position 0
+
+        # Search for existing module docstring right after marker
+        # Module docstring should be IMMEDIATELY after @llm-module-start
+        # We search within a limited range (next 5 lines) to avoid false positives
+        search_start = marker_start_idx + 1
+        search_end = min(marker_start_idx + 6, len(lines))  # Search next 5 lines max
+
+        docstring_start = None
+        docstring_end = None
+
+        # Check if there's already a docstring right after the marker
+        for i in range(search_start, search_end):
+            line = lines[i].strip()
+            # Skip empty lines
+            if not line:
+                continue
+            # Check if this line starts a docstring
+            if line.startswith('"""') or line.startswith("'''"):
+                # Found start of docstring - use helper to find the end
+                ds_start, ds_end = find_docstring_location(lines, i)
+                if ds_start is not None:
+                    docstring_start = ds_start
+                    docstring_end = ds_end
+                break
+            # If we hit non-empty, non-docstring content, stop searching
+            else:
+                break
+
+        # Format new docstring (module-level, no indentation)
+        formatted_docstring = self._format_docstring(suggested_text, indent)
+
+        # Replace or insert
+        if docstring_start is not None and docstring_end is not None:
+            # Replace existing docstring
+            logger.info(f"Replacing existing module docstring at lines {docstring_start+1}-{docstring_end+1}")
+            lines[docstring_start:docstring_end + 1] = formatted_docstring.split('\n')
+        else:
+            # Insert new docstring IMMEDIATELY after @llm-module-start marker
+            insert_at = marker_start_idx + 1
+            logger.info(f"Inserting new module docstring at line {insert_at+1}")
+            docstring_lines = formatted_docstring.split('\n')
+            lines[insert_at:insert_at] = docstring_lines
 
         return '\n'.join(lines)
 
