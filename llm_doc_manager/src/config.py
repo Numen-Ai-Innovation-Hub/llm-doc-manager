@@ -62,6 +62,7 @@ class Config:
     llm: LLMConfig = field(default_factory=LLMConfig)
     scanning: ScanningConfig = field(default_factory=ScanningConfig)
     output: OutputConfig = field(default_factory=OutputConfig)
+    project_root: str = field(default_factory=lambda: os.getcwd())
 
     @classmethod
     def from_dict(cls, data: Dict[str, Any]) -> 'Config':
@@ -69,7 +70,8 @@ class Config:
         return cls(
             llm=LLMConfig(**data.get('llm', {})),
             scanning=ScanningConfig(**data.get('scanning', {})),
-            output=OutputConfig(**data.get('output', {}))
+            output=OutputConfig(**data.get('output', {})),
+            project_root=data.get('project_root', os.getcwd())
         )
 
     def to_dict(self) -> Dict[str, Any]:
@@ -77,7 +79,8 @@ class Config:
         return {
             'llm': asdict(self.llm),
             'scanning': asdict(self.scanning),
-            'output': asdict(self.output)
+            'output': asdict(self.output),
+            'project_root': self.project_root
         }
 
 
@@ -106,9 +109,13 @@ class ConfigManager:
             Loaded or default configuration
         """
         if self.config_file.exists():
-            return self._load_from_file()
+            config = self._load_from_file()
         else:
-            return Config()
+            config = Config()
+
+        # Ensure project_root is set from ConfigManager
+        config.project_root = str(self.project_root)
+        return config
 
     def _load_from_file(self) -> Config:
         """Load configuration from YAML file."""
@@ -119,11 +126,17 @@ class ConfigManager:
             # Resolve environment variables
             data = self._resolve_env_vars(data)
 
+            # Ensure project_root is set
+            if 'project_root' not in data:
+                data['project_root'] = str(self.project_root)
+
             return Config.from_dict(data)
         except Exception as e:
             logger.warning(f"Error loading config file: {e}")
             logger.info("Using default configuration.")
-            return Config()
+            config = Config()
+            config.project_root = str(self.project_root)
+            return config
 
     def save(self, config: Config):
         """
