@@ -115,11 +115,11 @@ class DocsGenerator:
 
             # 3. Build import graph
             logger.info("Building import dependency graph")
-            self._import_graph = self.analyzer.build_import_graph(modules)
+            self._import_graph = self.analyzer.build_import_graph()
 
             # 4. Detect entry points
             logger.info("Detecting entry points")
-            entry_points = self.analyzer.detect_entry_points(modules)
+            entry_points = self.analyzer.detect_entry_points()
 
             # 5. Calculate project-level metrics
             total_loc = sum(m.lines_of_code for m in modules.values())
