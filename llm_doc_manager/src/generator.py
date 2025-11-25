@@ -69,10 +69,10 @@ class DocsGenerator:
         self.db = db
         self.detector = detector
         self.llm = llm_client
-        self.analyzer = ASTAnalyzer(config.project_root)
 
         # Paths
         self.project_root = Path(config.project_root)
+        self.analyzer = ASTAnalyzer(self.project_root)
         self.docs_dir = self.project_root / "docs"
         self.module_dir = self.docs_dir / "module"
         self.templates_dir = Path(__file__).parent.parent / "templates"
