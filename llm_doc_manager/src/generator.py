@@ -8,7 +8,6 @@ comprehensive project documentation.
 
 import ast
 import json
-import logging
 import hashlib
 import subprocess
 from pathlib import Path
@@ -20,9 +19,12 @@ from llm_doc_manager.src.config import Config
 from llm_doc_manager.src.database import DatabaseManager
 from llm_doc_manager.src.detector import ChangeDetector
 from llm_doc_manager.utils.ast_analyzer import ASTAnalyzer, ModuleInfo
+from llm_doc_manager.utils.llm_client import BaseLLMClient
+from llm_doc_manager.utils.logger_setup import get_logger
+from llm_doc_manager.utils.marker_detector import MarkerDetector, MarkerType
 
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 
 @dataclass
@@ -54,7 +56,7 @@ class DocsGenerator:
         config: Config,
         db: DatabaseManager,
         detector: ChangeDetector,
-        llm_client: Any
+        llm_client: BaseLLMClient
     ):
         """
         Initialize documentation generator.
@@ -63,7 +65,7 @@ class DocsGenerator:
             config: Application configuration
             db: Database connection
             detector: Change detector for incremental updates
-            llm_client: Processor instance (must have _call_llm method)
+            llm_client: LLM client instance
         """
         self.config = config
         self.db = db
@@ -76,6 +78,9 @@ class DocsGenerator:
         self.docs_dir = self.project_root / "docs"
         self.module_dir = self.docs_dir / "module"
         self.templates_dir = Path(__file__).parent.parent / "templates"
+
+        # Marker detector for filtering files
+        self.marker_detector = MarkerDetector()
 
         # Cache for AST analysis results
         self._module_cache: Dict[str, ModuleInfo] = {}
@@ -150,36 +155,51 @@ class DocsGenerator:
 
             # 8. Generate each documentation file
             # Order matters - some docs reference others
+            logger.info(f"\n📝 Generating documentation files...")
 
             # 8.1 README (executive summary)
+            logger.info("  [1/7] readme.md")
             readme_result = self._generate_readme(modules, metadata, force)
             if readme_result["generated"]:
                 results["generated_files"].append("docs/readme.md")
+                logger.info("    ✓ Generated")
             else:
                 results["skipped_files"].append("docs/readme.md")
+                logger.info("    ⊘ Skipped (up-to-date)")
 
             # 8.2 Architecture
+            logger.info("  [2/7] architecture.md")
             arch_result = self._generate_architecture(modules, metadata, force)
             if arch_result["generated"]:
                 results["generated_files"].append("docs/architecture.md")
+                logger.info("    ✓ Generated")
             else:
                 results["skipped_files"].append("docs/architecture.md")
+                logger.info("    ⊘ Skipped (up-to-date)")
 
             # 8.3 Glossary
+            logger.info("  [3/7] glossary.md")
             glossary_result = self._generate_glossary(modules, metadata, force)
             if glossary_result["generated"]:
                 results["generated_files"].append("docs/glossary.md")
+                logger.info("    ✓ Generated")
             else:
                 results["skipped_files"].append("docs/glossary.md")
+                logger.info("    ⊘ Skipped (up-to-date)")
 
             # 8.4 Development Journal (whereiwas)
+            logger.info("  [4/7] whereiwas.md")
             whereiwas_result = self._generate_whereiwas(metadata, force)
             if whereiwas_result["generated"]:
                 results["generated_files"].append("docs/whereiwas.md")
+                logger.info("    ✓ Generated")
             else:
                 results["skipped_files"].append("docs/whereiwas.md")
+                logger.info("    ⊘ Skipped (up-to-date)")
 
             # 8.5 Module-level API docs
+            logger.info(f"  [5/7] Module docs ({len(modules)} modules)")
+            module_count = 0
             for module_path, module_info in modules.items():
                 module_result = self._generate_module_doc(
                     module_path,
@@ -189,23 +209,31 @@ class DocsGenerator:
                 )
                 if module_result["generated"]:
                     results["generated_files"].append(module_result["doc_path"])
+                    module_count += 1
                 else:
                     results["skipped_files"].append(module_result["doc_path"])
+            logger.info(f"    ✓ Generated {module_count}/{len(modules)} modules")
 
             # 8.6 index.json (complete metadata for RAG)
+            logger.info("  [6/7] index.json")
             index_result = self._generate_index_json(modules, metadata, force)
             if index_result["generated"]:
                 results["generated_files"].append("docs/index.json")
+                logger.info("    ✓ Generated")
             else:
                 results["skipped_files"].append("docs/index.json")
+                logger.info("    ⊘ Skipped (up-to-date)")
 
             # 8.7 index.md (navigation hub)
             # Must be last - references all other files
+            logger.info("  [7/7] index.md")
             index_md_result = self._generate_index_md(modules, metadata, force)
             if index_md_result["generated"]:
                 results["generated_files"].append("docs/index.md")
+                logger.info("    ✓ Generated")
             else:
                 results["skipped_files"].append("docs/index.md")
+                logger.info("    ⊘ Skipped (up-to-date)")
 
             # 9. Validate generated documentation
             validation_errors = self._validate_generated_docs()
@@ -242,6 +270,10 @@ class DocsGenerator:
 
         # Find all Python files
         python_files = list(self.project_root.rglob("*.py"))
+        total_files = len([f for f in python_files if not self._should_skip_file(f)])
+
+        logger.info(f"📂 Found {total_files} Python files to analyze")
+        processed = 0
 
         for file_path in python_files:
             # Skip non-source files
@@ -249,18 +281,26 @@ class DocsGenerator:
                 continue
 
             try:
+                processed += 1
                 relative_path = file_path.relative_to(self.project_root)
+                logger.info(f"  [{processed}/{total_files}] Analyzing {relative_path}")
+
                 module_info = self.analyzer.extract_module_info(str(file_path))
                 modules[str(relative_path)] = module_info
                 self._module_cache[str(relative_path)] = module_info
 
             except Exception as e:
-                logger.warning(f"Failed to analyze {file_path}: {e}")
+                logger.error(f"  ❌ Failed to analyze {file_path}: {e}")
 
         return modules
 
     def _should_skip_file(self, file_path: Path) -> bool:
-        """Determine if file should be skipped in analysis."""
+        """
+        Determine if file should be skipped in documentation generation.
+
+        IMPORTANT: Only files with valid @llm_module_start and @llm_module_end markers
+        are included in documentation generation.
+        """
         skip_patterns = [
             "__pycache__",
             ".git",
@@ -273,7 +313,27 @@ class DocsGenerator:
             ".egg-info"
         ]
 
-        return any(pattern in str(file_path) for pattern in skip_patterns)
+        # Skip files matching exclude patterns
+        if any(pattern in str(file_path) for pattern in skip_patterns):
+            return True
+
+        # Check if file has valid module markers
+        try:
+            content = file_path.read_text(encoding="utf-8")
+            blocks = self.marker_detector.detect_blocks(content, str(file_path))
+
+            # Only include files with MODULE_DOC markers
+            has_module_markers = any(block.marker_type == MarkerType.MODULE_DOC for block in blocks)
+
+            if not has_module_markers:
+                logger.debug(f"Skipping {file_path.name} - no @llm_module markers found")
+                return True
+
+            return False
+
+        except Exception as e:
+            logger.warning(f"Error checking markers in {file_path}: {e}")
+            return True  # Skip files we can't read
 
     def _detect_architecture_pattern(
         self,
@@ -1052,8 +1112,17 @@ class DocsGenerator:
             placeholder = f"{{{key}}}"
             prompt = prompt.replace(placeholder, str(value))
 
-        # Call LLM (via processor's _call_llm method)
-        response, _ = self.llm._call_llm(prompt)
+        # Log prompt size
+        prompt_chars = len(prompt)
+        prompt_tokens_est = prompt_chars // 4  # Rough estimate: 1 token ~= 4 chars
+        logger.info(f"    Prompt size: {prompt_chars:,} chars (~{prompt_tokens_est:,} tokens)")
+
+        # Warn if prompt is very large
+        if prompt_tokens_est > 150000:  # Claude 3.7 Sonnet has 200k context
+            logger.warning(f"    ⚠️  Large prompt! May exceed model limits")
+
+        # Call LLM
+        response, _ = self.llm.call(prompt)
         return response
 
     def _is_doc_current(

@@ -10,7 +10,7 @@ import traceback
 from pathlib import Path
 from typing import Optional
 
-from .config import Config, ConfigManager
+from .config import Config, ConfigManager, LLMConfig
 from .queue import QueueManager, TaskStatus
 from .scanner import Scanner
 from .processor import Processor, ProcessResult
@@ -21,6 +21,7 @@ from .generator import DocsGenerator
 from .constants import TASK_TYPE_LABELS
 from .database import DatabaseManager
 from ..utils.marker_validator import MarkerValidator, ValidationLevel
+from ..utils.llm_client import LLMClientFactory
 
 
 def _get_hierarchical_blocks(changed_names: set, blocks: list) -> list:
@@ -292,18 +293,39 @@ def sync(path, force):
                 try:
                     # Initialize components for docs generation
                     db_manager = DatabaseManager()
+
+                    # Strategy: Use different LLM providers for different tasks
+                    # - OpenAI (gpt-4o-mini): Fast and cheap for inline docstrings/comments
+                    # - Anthropic (claude-3-7-sonnet): 1M context window for comprehensive docs
+
+                    # Processor uses OpenAI config (fast for docstrings/comments)
+                    # Config already initialized with OpenAI provider from .env
                     processor = Processor(config, queue_manager)
+
+                    # DocsGenerator uses Anthropic config (large context for comprehensive docs)
+                    config_docs = Config(llm=LLMConfig(provider="anthropic"))
+                    api_key_docs = config_manager.get_api_key(config_docs)
+
+                    llm_client_docs = LLMClientFactory.create(
+                        provider=config_docs.llm.provider,
+                        model=config_docs.llm.model,
+                        api_key=api_key_docs,
+                        base_url=config_docs.llm.base_url,
+                        temperature=config_docs.llm.temperature,
+                        max_tokens=config_docs.llm.max_tokens
+                    )
+
                     docs_generator = DocsGenerator(
-                        config=config,
+                        config=config_docs,
                         db=db_manager,
                         detector=detector,
-                        llm_client=processor
+                        llm_client=llm_client_docs
                     )
 
                     # Check if docs need regeneration (incremental)
                     if not force:
                         docs_changes = detector.detect_docs_changes(
-                            project_root=config.project_root,
+                            project_root=config_docs.project_root,
                             db_connection=db_manager.get_connection()
                         )
 

@@ -14,6 +14,7 @@ from .queue import DocTask, QueueManager, TaskStatus
 from .constants import TASK_PROCESSING_ORDER
 from ..utils.docstring_handler import extract_docstring
 from ..utils.logger_setup import get_logger
+from ..utils.llm_client import LLMClientFactory
 
 logger = get_logger(__name__)
 
@@ -41,50 +42,21 @@ class Processor:
         """
         self.config = config
         self.queue_manager = queue_manager
-        self.llm_client = self._init_llm_client()
-        self.templates = self._load_templates()
 
-    def _init_llm_client(self):
-        """Initialize LLM client based on configuration."""
-        provider = self.config.llm.provider.lower()
-
-        # Get API key
+        # Inicializa LLMClient usando Factory
         config_manager = ConfigManager()
-        api_key = config_manager.get_api_key(self.config)
+        api_key = config_manager.get_api_key(config)
 
-        # Get base_url from config (if configured)
-        base_url = self.config.llm.base_url if self.config.llm.base_url else None
+        self.llm_client = LLMClientFactory.create(
+            provider=config.llm.provider,
+            model=config.llm.model,
+            api_key=api_key,
+            base_url=config.llm.base_url,
+            temperature=config.llm.temperature,
+            max_tokens=config.llm.max_tokens
+        )
 
-        if provider == "anthropic":
-            try:
-                import anthropic
-                if base_url:
-                    return anthropic.Anthropic(api_key=api_key, base_url=base_url)
-                return anthropic.Anthropic(api_key=api_key)
-            except ImportError:
-                raise ImportError("anthropic package not installed. Run: pip install anthropic")
-
-        elif provider == "openai":
-            try:
-                import openai
-                if base_url:
-                    return openai.OpenAI(api_key=api_key, base_url=base_url)
-                return openai.OpenAI(api_key=api_key)
-            except ImportError:
-                raise ImportError("openai package not installed. Run: pip install openai")
-
-        elif provider == "ollama":
-            # Ollama client (local) - base_url for ollama if needed
-            try:
-                import ollama
-                if base_url:
-                    return ollama.Client(host=base_url)
-                return ollama.Client()
-            except ImportError:
-                raise ImportError("ollama package not installed. Run: pip install ollama")
-
-        else:
-            raise ValueError(f"Unsupported LLM provider: {provider}")
+        self.templates = self._load_templates()
 
     def _load_templates(self) -> Dict[str, str]:
         """Load prompt templates."""
@@ -128,7 +100,7 @@ class Processor:
             prompt = self._generate_prompt(task)
 
             # Call LLM
-            response, tokens = self._call_llm(prompt)
+            response, tokens = self.llm_client.call(prompt)
 
             # Parse response
             suggestion = self._parse_response(response, task)
@@ -290,54 +262,6 @@ class Processor:
         docstring = extract_docstring(context)
         return docstring if docstring else ""
 
-    def _call_llm(self, prompt: str) -> tuple[str, int]:
-        """
-        Call LLM with the prompt.
-
-        Args:
-            prompt: Formatted prompt
-
-        Returns:
-            Tuple of (response text, tokens used)
-        """
-        provider = self.config.llm.provider.lower()
-
-        if provider == "anthropic":
-            response = self.llm_client.messages.create(
-                model=self.config.llm.model,
-                max_tokens=self.config.llm.max_tokens,
-                temperature=self.config.llm.temperature,
-                messages=[
-                    {"role": "user", "content": prompt}
-                ]
-            )
-            tokens = response.usage.input_tokens + response.usage.output_tokens
-            return response.content[0].text, tokens
-
-        elif provider == "openai":
-            response = self.llm_client.chat.completions.create(
-                model=self.config.llm.model,
-                messages=[
-                    {"role": "user", "content": prompt}
-                ],
-                temperature=self.config.llm.temperature,
-                max_tokens=self.config.llm.max_tokens
-            )
-            tokens = response.usage.total_tokens
-            return response.choices[0].message.content, tokens
-
-        elif provider == "ollama":
-            response = self.llm_client.chat(
-                model=self.config.llm.model,
-                messages=[
-                    {"role": "user", "content": prompt}
-                ]
-            )
-            # Ollama doesn't provide token count by default
-            return response['message']['content'], 0
-
-        else:
-            raise ValueError(f"Unsupported provider: {provider}")
 
     def _parse_response(self, response: str, task: DocTask) -> str:
         """

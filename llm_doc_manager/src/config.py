@@ -7,7 +7,7 @@ Handles loading, saving, and validating configuration settings.
 import os
 import yaml
 from pathlib import Path
-from typing import Dict, List, Optional, Any
+from typing import Dict, List, Optional, Any, Union
 from dataclasses import dataclass, field, asdict
 
 from ..utils.logger_setup import get_logger
@@ -26,16 +26,49 @@ except ImportError:
     pass  # python-dotenv not installed, skip
 
 
-
 @dataclass
 class LLMConfig:
     """LLM provider configuration."""
-    provider: str = field(default_factory=lambda: os.getenv("OPENAI_PROVIDER", "openai"))
-    model: str = field(default_factory=lambda: os.getenv("OPENAI_MODEL", "gpt-4o-mini"))
-    api_key: Optional[str] = field(default_factory=lambda: os.getenv("OPENAI_API_KEY"))
-    base_url: Optional[str] = field(default_factory=lambda: os.getenv("OPENAI_API_ENDPOINT"))
-    temperature: float = 0.3
+    provider: str = "openai"
+    model: str = "gpt-4o-mini"
+    api_key: Optional[str] = None
+    base_url: Optional[str] = None
+    temperature: float = 0.5
     max_tokens: int = 4000
+
+    def __post_init__(self):
+        """Load configuration from environment variables based on provider."""
+        # Map provider to environment variable prefix
+        prefix_map = {
+            'openai': 'OPENAI',
+            'anthropic': 'ANTHROPIC',
+            'ollama': 'OLLAMA'
+        }
+
+        prefix = prefix_map.get(self.provider.lower())
+        if not prefix:
+            raise ValueError(f"Provider '{self.provider}' não suportado. Use: {list(prefix_map.keys())}")
+
+        # Load from environment if not explicitly set (allow override from code)
+        self.provider = os.getenv(f"{prefix}_PROVIDER", self.provider)
+        self.model = os.getenv(f"{prefix}_MODEL", self.model)
+
+        # API key and base_url: load from env if not set
+        if not self.api_key:
+            self.api_key = os.getenv(f"{prefix}_API_KEY")
+        if not self.base_url:
+            base_url_env = os.getenv(f"{prefix}_BASE_URL")
+            if base_url_env:  # Only set if env var is not empty
+                self.base_url = base_url_env
+
+        # Load temperature and max_tokens from env
+        temp_str = os.getenv(f"{prefix}_TEMPERATURE")
+        if temp_str:
+            self.temperature = float(temp_str)
+
+        max_tokens_str = os.getenv(f"{prefix}_MAX_TOKENS")
+        if max_tokens_str:
+            self.max_tokens = int(max_tokens_str)
 
 
 @dataclass
