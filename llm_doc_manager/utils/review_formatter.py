@@ -17,6 +17,11 @@ from .response_schemas import (
     ValidationResult,
 )
 from .docstring_handler import extract_docstring
+from .docstring_formatter import (
+    format_module_docstring,
+    format_class_docstring,
+    format_method_docstring,
+)
 
 
 logger = logging.getLogger(__name__)
@@ -204,15 +209,33 @@ def format_validation_result_for_review(
     # Actual Content (only when validating existing documentation)
     if status == "Validate" and current_content:
         lines.append(f"Actual Content:")
-        lines.append(current_content)
+        # Clean and wrap in triple quotes
+        clean_content = current_content.strip()
+        if clean_content.startswith('"""') or clean_content.startswith("'''"):
+            clean_content = clean_content[3:]
+        if clean_content.endswith('"""') or clean_content.endswith("'''"):
+            clean_content = clean_content[:-3]
+        clean_content = clean_content.strip()
+
+        lines.append('"""')
+        lines.append(clean_content)
+        lines.append('"""')
         lines.append("")
 
     # Improved content
     if validation.improved_content:
         lines.append(f"Improved Content:")
-        # Don't add extra indentation - improved_content is already properly formatted
-        # from the validator with correct indentation and line wrapping
-        lines.append(validation.improved_content)
+        # Clean and wrap in triple quotes
+        clean_content = validation.improved_content.strip()
+        if clean_content.startswith('"""') or clean_content.startswith("'''"):
+            clean_content = clean_content[3:]
+        if clean_content.endswith('"""') or clean_content.endswith("'''"):
+            clean_content = clean_content[:-3]
+        clean_content = clean_content.strip()
+
+        lines.append('"""')
+        lines.append(clean_content)
+        lines.append('"""')
     else:
         lines.append(f"Improved Content: None")
 
@@ -241,19 +264,99 @@ def format_task_for_review(task) -> str:
         # Parse JSON suggestions back to Pydantic objects
         if task_type == "generate_module":
             schema = ModuleDocstring.model_validate_json(task.suggestion)
-            return format_module_docstring_for_review(schema)
+
+            lines = []
+            lines.append("Validation Status: Generate")
+            lines.append("")
+
+            # Actual Content - empty for generate
+            lines.append("Actual Content:")
+            lines.append('"""')
+            lines.append('"""')
+            lines.append("")
+
+            # Improved Content - complete formatted docstring
+            lines.append("Improved Content:")
+            lines.append('"""')
+            formatted = format_module_docstring(schema)
+            # Remove the """  from formatted output (formatter adds them)
+            clean = formatted.strip()
+            if clean.startswith('"""'):
+                clean = clean[3:]
+            if clean.endswith('"""'):
+                clean = clean[:-3]
+            lines.append(clean.strip())
+            lines.append('"""')
+
+            return '\n'.join(lines)
 
         elif task_type == "generate_class":
             schema = ClassDocstring.model_validate_json(task.suggestion)
-            return format_class_docstring_for_review(schema)
+
+            lines = []
+            lines.append("Validation Status: Generate")
+            lines.append("")
+
+            lines.append("Actual Content:")
+            lines.append('"""')
+            lines.append('"""')
+            lines.append("")
+
+            lines.append("Improved Content:")
+            lines.append('"""')
+            formatted = format_class_docstring(schema)
+            clean = formatted.strip()
+            if clean.startswith('"""'):
+                clean = clean[3:]
+            if clean.endswith('"""'):
+                clean = clean[:-3]
+            lines.append(clean.strip())
+            lines.append('"""')
+
+            return '\n'.join(lines)
 
         elif task_type == "generate_docstring":
             schema = MethodDocstring.model_validate_json(task.suggestion)
-            return format_method_docstring_for_review(schema)
+
+            lines = []
+            lines.append("Validation Status: Generate")
+            lines.append("")
+
+            lines.append("Actual Content:")
+            lines.append('"""')
+            lines.append('"""')
+            lines.append("")
+
+            lines.append("Improved Content:")
+            lines.append('"""')
+            formatted = format_method_docstring(schema)
+            clean = formatted.strip()
+            if clean.startswith('"""'):
+                clean = clean[3:]
+            if clean.endswith('"""'):
+                clean = clean[:-3]
+            lines.append(clean.strip())
+            lines.append('"""')
+
+            return '\n'.join(lines)
 
         elif task_type == "generate_comment":
-            # Already a plain string
-            return f"Comment: {task.suggestion}"
+            # Comments are plain text, not JSON
+            lines = []
+            lines.append("Validation Status: Generate")
+            lines.append("")
+
+            lines.append("Actual Content:")
+            lines.append('"""')
+            lines.append('"""')
+            lines.append("")
+
+            lines.append("Improved Content:")
+            lines.append('"""')
+            lines.append(task.suggestion)
+            lines.append('"""')
+
+            return '\n'.join(lines)
 
         elif task_type.startswith("validate_"):
             # After Phase 1 fix: suggestion is ValidationResult JSON
