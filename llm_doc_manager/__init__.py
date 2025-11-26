@@ -1,11 +1,15 @@
 # @llm-module-start
 """
-LLM Documentation Manager for validating and updating docstrings and comments.
-This module provides tools for validating, creating, and updating docstrings
-and comments using Large Language Models. It streamlines the documentation
-process to ensure consistency and accuracy across your codebase, enhancing
-documentation practices effectively. Typical usage example: from
-llm_doc_manager import DocumentationManager manager = DocumentationManager()
+Manages documentation for validating and updating docstrings and comments.
+
+This module provides tools for validating and updating docstrings and comments
+using Large Language Models. It enhances documentation practices by ensuring
+consistency and accuracy, making the documentation process more efficient.
+
+Typical usage example:
+
+from llm_doc_manager import DocumentationManager
+manager = DocumentationManager()
 manager.validate_docstrings()
 """
 

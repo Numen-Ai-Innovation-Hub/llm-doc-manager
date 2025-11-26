@@ -195,7 +195,7 @@ def format_validation_result_for_review(
             lines.append(f"  • {issue}")
     else:
         lines.append(f"Issues Found: None")
-    lines.append("")
+    lines.append("-" * 60)
 
     # Suggestions (rationale - how to fix)
     if validation.suggestions:
@@ -204,7 +204,7 @@ def format_validation_result_for_review(
             lines.append(f"  • {suggestion}")
     else:
         lines.append(f"Suggestions: None")
-    lines.append("")
+    lines.append("-" * 60)
 
     # Actual Content (only when validating existing documentation)
     if status == "Validate" and current_content:
@@ -220,7 +220,7 @@ def format_validation_result_for_review(
         lines.append('"""')
         lines.append(clean_content)
         lines.append('"""')
-        lines.append("")
+        lines.append("-" * 60)
 
     # Improved content
     if validation.improved_content:
@@ -236,8 +236,10 @@ def format_validation_result_for_review(
         lines.append('"""')
         lines.append(clean_content)
         lines.append('"""')
+        lines.append("-" * 60)
     else:
         lines.append(f"Improved Content: None")
+        lines.append("-" * 60)
 
     return '\n'.join(lines)
 
@@ -273,7 +275,7 @@ def format_task_for_review(task) -> str:
             lines.append("Actual Content:")
             lines.append('"""')
             lines.append('"""')
-            lines.append("")
+            lines.append("-" * 60)
 
             # Improved Content - complete formatted docstring
             lines.append("Improved Content:")
@@ -287,6 +289,7 @@ def format_task_for_review(task) -> str:
                 clean = clean[:-3]
             lines.append(clean.strip())
             lines.append('"""')
+            lines.append("-" * 60)
 
             return '\n'.join(lines)
 
@@ -300,7 +303,7 @@ def format_task_for_review(task) -> str:
             lines.append("Actual Content:")
             lines.append('"""')
             lines.append('"""')
-            lines.append("")
+            lines.append("-" * 60)
 
             lines.append("Improved Content:")
             lines.append('"""')
@@ -312,6 +315,7 @@ def format_task_for_review(task) -> str:
                 clean = clean[:-3]
             lines.append(clean.strip())
             lines.append('"""')
+            lines.append("-" * 60)
 
             return '\n'.join(lines)
 
@@ -325,7 +329,7 @@ def format_task_for_review(task) -> str:
             lines.append("Actual Content:")
             lines.append('"""')
             lines.append('"""')
-            lines.append("")
+            lines.append("-" * 60)
 
             lines.append("Improved Content:")
             lines.append('"""')
@@ -337,6 +341,7 @@ def format_task_for_review(task) -> str:
                 clean = clean[:-3]
             lines.append(clean.strip())
             lines.append('"""')
+            lines.append("-" * 60)
 
             return '\n'.join(lines)
 
@@ -349,12 +354,13 @@ def format_task_for_review(task) -> str:
             lines.append("Actual Content:")
             lines.append('"""')
             lines.append('"""')
-            lines.append("")
+            lines.append("-" * 60)
 
             lines.append("Improved Content:")
             lines.append('"""')
             lines.append(task.suggestion)
             lines.append('"""')
+            lines.append("-" * 60)
 
             return '\n'.join(lines)
 
