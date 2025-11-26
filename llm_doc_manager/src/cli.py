@@ -534,7 +534,7 @@ def review():
                 # Format structured output for human-readable display
                 formatted_output = format_task_for_review(task)
                 click.echo(formatted_output)
-            click.echo(f"{'='*60}")
+                click.echo(f"{'='*60}")
 
                 # Get user choice
                 choice = click.prompt(
