@@ -15,6 +15,7 @@ from .response_schemas import (
     ClassDocstring,
     MethodDocstring,
     ValidationResult,
+    _wrap_docstring_preserving_structure,
 )
 from .docstring_handler import extract_docstring
 from .docstring_formatter import (
@@ -209,13 +210,16 @@ def format_validation_result_for_review(
     # Actual Content (only when validating existing documentation)
     if status == "Validate" and current_content:
         lines.append(f"Actual Content:")
-        # Clean and wrap in triple quotes
+        # Clean and normalize indentation
         clean_content = current_content.strip()
         if clean_content.startswith('"""') or clean_content.startswith("'''"):
             clean_content = clean_content[3:]
         if clean_content.endswith('"""') or clean_content.endswith("'''"):
             clean_content = clean_content[:-3]
         clean_content = clean_content.strip()
+
+        # Normalize indentation using same logic as Pydantic validators
+        clean_content = _wrap_docstring_preserving_structure(clean_content)
 
         lines.append('"""')
         lines.append(clean_content)
