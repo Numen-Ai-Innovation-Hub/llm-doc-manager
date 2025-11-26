@@ -528,16 +528,13 @@ def review():
             click.echo(f"Type: {type_label}")
             if task.scope_name:
                 click.echo(f"Name: {task.scope_name}")
-            click.echo(f"{'='*60}")
 
             # Get suggestion from task (stored in database)
             if task.suggestion:
-                click.echo("\nSuggested change:")
-                click.echo("-" * 60)
                 # Format structured output for human-readable display
                 formatted_output = format_task_for_review(task)
                 click.echo(formatted_output)
-                click.echo("-" * 60)
+            click.echo(f"{'='*60}")
 
                 # Get user choice
                 choice = click.prompt(

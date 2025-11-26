@@ -236,10 +236,8 @@ def format_validation_result_for_review(
         lines.append('"""')
         lines.append(clean_content)
         lines.append('"""')
-        lines.append("-" * 60)
     else:
         lines.append(f"Improved Content: None")
-        lines.append("-" * 60)
 
     return '\n'.join(lines)
 
@@ -289,7 +287,6 @@ def format_task_for_review(task) -> str:
                 clean = clean[:-3]
             lines.append(clean.strip())
             lines.append('"""')
-            lines.append("-" * 60)
 
             return '\n'.join(lines)
 
@@ -315,7 +312,6 @@ def format_task_for_review(task) -> str:
                 clean = clean[:-3]
             lines.append(clean.strip())
             lines.append('"""')
-            lines.append("-" * 60)
 
             return '\n'.join(lines)
 
@@ -341,7 +337,6 @@ def format_task_for_review(task) -> str:
                 clean = clean[:-3]
             lines.append(clean.strip())
             lines.append('"""')
-            lines.append("-" * 60)
 
             return '\n'.join(lines)
 
@@ -360,7 +355,6 @@ def format_task_for_review(task) -> str:
             lines.append('"""')
             lines.append(task.suggestion)
             lines.append('"""')
-            lines.append("-" * 60)
 
             return '\n'.join(lines)
 
