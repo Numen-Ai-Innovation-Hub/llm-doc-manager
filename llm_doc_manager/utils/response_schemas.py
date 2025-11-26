@@ -54,6 +54,96 @@ def _wrap_text_at_79_chars(text: str) -> str:
     return '\n        '.join(lines)  # 8 spaces for continuation
 
 
+def _wrap_single_line(line: str, max_length: int = 79) -> list[str]:
+    """
+    Wrap a single line at max_length characters preserving its indentation.
+
+    Args:
+        line: Single line to wrap
+        max_length: Maximum line length (default 79)
+
+    Returns:
+        List of wrapped lines with preserved and continuation indentation
+    """
+    if len(line) <= max_length:
+        return [line]
+
+    # Detect original indentation
+    indent = len(line) - len(line.lstrip())
+    indent_str = line[:indent]
+    content = line[indent:]
+
+    # Wrap content preserving indentation
+    words = content.split()
+    lines = []
+    current_line = []
+    current_len = indent
+
+    for word in words:
+        word_len = len(word)
+        space_len = 1 if current_line else 0
+
+        # For continuation lines, add 4 extra spaces
+        continuation_indent = 4 if current_line else 0
+        total_len = current_len + continuation_indent + word_len + space_len
+
+        if total_len > max_length and current_line:
+            # Line full, start new continuation line
+            lines.append(indent_str + ' '.join(current_line))
+            current_line = [word]
+            current_len = indent + 4 + word_len
+        else:
+            current_line.append(word)
+            if not lines:  # First line
+                current_len = indent + len(' '.join(current_line))
+            else:  # Continuation line
+                current_len = indent + 4 + len(' '.join(current_line))
+
+    if current_line:
+        if lines:  # Continuation line
+            lines.append(indent_str + '    ' + ' '.join(current_line))
+        else:  # First (and only) line
+            lines.append(indent_str + ' '.join(current_line))
+
+    return lines
+
+
+def _wrap_docstring_preserving_structure(text: str) -> str:
+    """
+    Wrap docstring content preserving multi-line structure and indentation.
+
+    Processes each line individually:
+    - Lines <= 79 chars: kept as-is
+    - Lines > 79 chars: wrapped with +4 space continuation indentation
+    - Blank lines: preserved
+    - Original indentation: preserved
+
+    This allows LLMs to focus on content while the validator handles formatting.
+
+    Args:
+        text: Complete docstring content (may be multi-line)
+
+    Returns:
+        Wrapped docstring with all lines <= 79 characters
+    """
+    if not text:
+        return text
+
+    lines = text.split('\n')
+    result = []
+
+    for line in lines:
+        if not line or len(line) <= 79:
+            # Empty line or already compliant, keep as-is
+            result.append(line)
+        else:
+            # Line > 79 characters, wrap it preserving indentation
+            wrapped_lines = _wrap_single_line(line, max_length=79)
+            result.extend(wrapped_lines)
+
+    return '\n'.join(result)
+
+
 # ============================================================================
 # Auxiliary schemas (reusable components)
 # ============================================================================
@@ -324,7 +414,16 @@ class ValidationResult(BaseModel):
     @field_validator('improved_content')
     @classmethod
     def wrap_long_lines(cls, v: Optional[str]) -> Optional[str]:
-        """Break lines at 79 characters by splitting on whitespace."""
+        """
+        Wrap docstring preserving multi-line structure.
+
+        Uses intelligent line-by-line wrapping that preserves:
+        - Multi-line structure (Args, Returns, etc. sections)
+        - Original indentation
+        - Blank lines
+
+        This allows LLMs to focus on content while validator ensures 79-char limit.
+        """
         if v is None:
             return v
-        return _wrap_text_at_79_chars(v)
+        return _wrap_docstring_preserving_structure(v)

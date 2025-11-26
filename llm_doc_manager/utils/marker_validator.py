@@ -395,6 +395,13 @@ class MarkerValidator:
         Processing order is determined by TASK_PROCESSING_ORDER constant:
         - module_doc → class_doc → docstring → comment
 
+        Task type selection logic:
+        - If block has existing docstring → create validate_* task
+        - If block has no docstring → create generate_* task
+
+        This allows the system to provide rationale (issues + suggestions)
+        when validating existing documentation after code changes.
+
         Args:
             file_path: Path to file to process
             blocks: List of DetectedBlock objects (already computed by scanner)
@@ -404,14 +411,19 @@ class MarkerValidator:
         """
         # Import here to avoid circular dependency
         from ..src.queue import QueueManager, DocTask
-        from ..src.constants import MARKER_TO_TASK_TYPE
+        from ..src.constants import MARKER_TO_TASK_TYPE, MARKER_TO_VALIDATE_TYPE
 
         queue = QueueManager()
         tasks_created = 0
 
         for block in blocks:
-            # Use centralized mapping
-            task_type = MARKER_TO_TASK_TYPE.get(block.marker_type, 'generate_docstring')
+            # Choose task type based on whether docstring already exists
+            if block.has_docstring and block.current_docstring:
+                # Existing docstring → validate and improve
+                task_type = MARKER_TO_VALIDATE_TYPE.get(block.marker_type, 'validate_docstring')
+            else:
+                # No docstring → generate new one
+                task_type = MARKER_TO_TASK_TYPE.get(block.marker_type, 'generate_docstring')
 
             # Create task (no priority - processing order determined by TASK_PROCESSING_ORDER)
             task = DocTask(

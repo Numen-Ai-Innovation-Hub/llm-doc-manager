@@ -6,7 +6,7 @@ Handles communication with LLM providers to generate, validate, and improve docu
 
 import json
 from pathlib import Path
-from typing import Dict, Any, Optional, List
+from typing import Dict, Any, Optional, List, Union
 from dataclasses import dataclass
 
 from .config import Config, ConfigManager
@@ -21,11 +21,6 @@ from ..utils.response_schemas import (
     MethodDocstring,
     CommentText,
     ValidationResult
-)
-from ..utils.docstring_formatter import (
-    format_module_docstring,
-    format_class_docstring,
-    format_method_docstring
 )
 
 logger = get_logger(__name__)
@@ -133,8 +128,15 @@ class Processor:
             # Parse response and format as docstring/comment
             suggestion = self._parse_and_format_response(response, task)
 
+            # Convert Pydantic objects to JSON string for database storage
+            if isinstance(suggestion, (ModuleDocstring, ClassDocstring, MethodDocstring)):
+                suggestion_for_db = suggestion.model_dump_json()
+            else:
+                # Already a string (CommentText or ValidationResult)
+                suggestion_for_db = suggestion
+
             # Save suggestion to database
-            self.queue_manager.update_suggestion(task.id, suggestion)
+            self.queue_manager.update_suggestion(task.id, suggestion_for_db)
 
             # Update task status to completed
             self.queue_manager.update_task_status(task.id, TaskStatus.COMPLETED)
@@ -291,52 +293,49 @@ class Processor:
         return docstring if docstring else ""
 
 
-    def _parse_and_format_response(self, response: str, task: DocTask) -> str:
+    def _parse_and_format_response(self, response: str, task: DocTask):
         """
-        Parse structured LLM response and format as docstring/comment.
+        Parse structured LLM response and return schema object or formatted string.
 
         With Structured Outputs, the response is guaranteed to be valid JSON
         matching the Pydantic schema for the task type. This method parses
-        the JSON and formats it into the final docstring/comment string.
+        the JSON and returns either:
+        - Pydantic schema objects (for generate_* tasks) - formatting done in applier
+        - Formatted strings (for validate_* tasks and generate_comment)
 
         Args:
             response: JSON string from LLM (structured output)
             task: Original task
 
         Returns:
-            Formatted docstring/comment ready to inject
+            Union[ModuleDocstring, ClassDocstring, MethodDocstring, str]: Schema object or formatted string
         """
         try:
             parsed_json = json.loads(response)
             task_type = task.task_type
 
-            # GENERATE tasks - build formatted docstring
+            # GENERATE tasks - return Pydantic object (formatting in applier)
             if task_type == "generate_module":
-                schema_obj = ModuleDocstring(**parsed_json)
-                return format_module_docstring(schema_obj)
+                return ModuleDocstring(**parsed_json)
 
             elif task_type == "generate_class":
-                schema_obj = ClassDocstring(**parsed_json)
-                return format_class_docstring(schema_obj)
+                return ClassDocstring(**parsed_json)
 
             elif task_type == "generate_docstring":
-                schema_obj = MethodDocstring(**parsed_json)
-                return format_method_docstring(schema_obj)
+                return MethodDocstring(**parsed_json)
 
             elif task_type == "generate_comment":
+                # Comments are simple strings - return directly
                 schema_obj = CommentText(**parsed_json)
                 return schema_obj.comment
 
-            # VALIDATE tasks - return improved version if available
+            # VALIDATE tasks - return full ValidationResult JSON
             elif task_type.startswith("validate_"):
                 validation = ValidationResult(**parsed_json)
 
-                # If not valid and has improved version, return it
-                if not validation.is_valid and validation.improved_content:
-                    return validation.improved_content
-
-                # If valid or no improved version, return empty string
-                return ""
+                # Store full ValidationResult as JSON (preserves issues/suggestions)
+                # This allows the review command to display rationale
+                return validation.model_dump_json()
 
             else:
                 logger.warning(f"Unknown task type: {task_type}")

@@ -6,6 +6,7 @@ Provides interactive commands for scanning, processing, and applying documentati
 
 import click
 import sys
+import json
 import traceback
 from pathlib import Path
 from typing import Optional
@@ -23,6 +24,13 @@ from .database import DatabaseManager
 from ..utils.marker_validator import MarkerValidator, ValidationLevel
 from ..utils.llm_client import LLMClientFactory
 from ..utils.logger_setup import LoggerManager
+from ..utils.response_schemas import (
+    ModuleDocstring,
+    ClassDocstring,
+    MethodDocstring,
+    ValidationResult
+)
+from ..utils.review_formatter import format_task_for_review
 
 
 def _get_hierarchical_blocks(changed_names: set, blocks: list) -> list:
@@ -447,6 +455,43 @@ def process(limit):
         sys.exit(1)
 
 
+def _sort_tasks_hierarchically(tasks):
+    """
+    Sort tasks by FILE > MODULE > CLASS > METHOD > COMMENT hierarchy.
+
+    Sorting order:
+    1. file_path (ASC) - group by file
+    2. task_type hierarchy - MODULE > CLASS > METHOD > COMMENT
+    3. line_number (ASC) - line order within file
+
+    Args:
+        tasks: List of DocTask objects
+
+    Returns:
+        Sorted list of DocTask objects
+    """
+    # Define hierarchy order
+    TYPE_HIERARCHY = {
+        'generate_module': 1,
+        'validate_module': 2,
+        'generate_class': 3,
+        'validate_class': 4,
+        'generate_docstring': 5,
+        'validate_docstring': 6,
+        'generate_comment': 7,
+        'validate_comment': 8,
+    }
+
+    def sort_key(task):
+        return (
+            task.file_path,                          # Primary: group by file
+            TYPE_HIERARCHY.get(task.task_type, 99),  # Secondary: hierarchy
+            task.line_number                         # Tertiary: line order
+        )
+
+    return sorted(tasks, key=sort_key)
+
+
 @cli.command()
 def review():
     """Review and accept/reject suggestions interactively."""
@@ -460,6 +505,9 @@ def review():
 
         # Get completed tasks
         completed = queue_manager.get_tasks_by_status(TaskStatus.COMPLETED)
+
+        # Sort hierarchically: FILE > MODULE > CLASS > METHOD > COMMENT
+        completed = _sort_tasks_hierarchically(completed)
 
         if not completed:
             click.echo("No suggestions to review. Run 'llm-doc-manager process' first.")
@@ -484,12 +532,11 @@ def review():
 
             # Get suggestion from task (stored in database)
             if task.suggestion:
-                # Clean suggestion text (remove quotes if LLM included them)
-                suggestion_text = task.suggestion.strip().strip('"""').strip("'''").strip()
-
                 click.echo("\nSuggested change:")
                 click.echo("-" * 60)
-                click.echo(suggestion_text)  # Show cleaned suggestion
+                # Format structured output for human-readable display
+                formatted_output = format_task_for_review(task)
+                click.echo(formatted_output)
                 click.echo("-" * 60)
 
                 # Get user choice
@@ -500,7 +547,7 @@ def review():
                 )
 
                 if choice == 'a':
-                    accepted.append((task, suggestion_text))
+                    accepted.append(task)
                     queue_manager.accept_task(task.id)
                     click.echo("✓ Accepted\n")
                 elif choice == 's':
@@ -570,13 +617,48 @@ def apply():
                 failed += 1
                 continue
 
+            # Deserialize suggestion from database (may be JSON string or plain string)
+            suggested_text = task.suggestion
+
+            # If it's a JSON string, parse it back to Pydantic object
+            if task.task_type == "generate_module":
+                try:
+                    parsed = json.loads(task.suggestion)
+                    suggested_text = ModuleDocstring(**parsed)
+                except (json.JSONDecodeError, TypeError):
+                    # Already a string (old format or validate_* task)
+                    pass
+            elif task.task_type == "generate_class":
+                try:
+                    parsed = json.loads(task.suggestion)
+                    suggested_text = ClassDocstring(**parsed)
+                except (json.JSONDecodeError, TypeError):
+                    pass
+            elif task.task_type == "generate_docstring":
+                try:
+                    parsed = json.loads(task.suggestion)
+                    suggested_text = MethodDocstring(**parsed)
+                except (json.JSONDecodeError, TypeError):
+                    pass
+            # Handle validate_* tasks (ValidationResult JSON)
+            elif task.task_type.startswith("validate_"):
+                try:
+                    parsed = json.loads(task.suggestion)
+                    validation_result = ValidationResult(**parsed)
+                    # Extract improved_content for actual file modification
+                    suggested_text = validation_result.improved_content or ""
+                except (json.JSONDecodeError, TypeError):
+                    # Fallback for legacy format (plain strings)
+                    pass
+            # For generate_comment, keep as string
+
             # Create suggestion object
             suggestion = Suggestion(
                 task_id=task.id,
                 file_path=task.file_path,
                 line_number=task.line_number,
                 original_text=task.marker_text,
-                suggested_text=task.suggestion,
+                suggested_text=suggested_text,
                 task_type=task.task_type
             )
 

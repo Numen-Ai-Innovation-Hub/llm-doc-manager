@@ -22,13 +22,23 @@ Line Number Convention:
 import shutil
 from datetime import datetime
 from pathlib import Path
-from typing import List, Optional, Dict
+from typing import List, Optional, Dict, Union
 from dataclasses import dataclass
 
 from .config import Config
 from .queue import DocTask, QueueManager
 from ..utils.docstring_handler import find_docstring_location
 from ..utils.logger_setup import get_logger
+from ..utils.response_schemas import (
+    ModuleDocstring,
+    ClassDocstring,
+    MethodDocstring
+)
+from ..utils.docstring_formatter import (
+    format_module_docstring,
+    format_class_docstring,
+    format_method_docstring
+)
 
 logger = get_logger(__name__)
 
@@ -122,6 +132,50 @@ class Applier:
         # Copy file
         shutil.copy2(file_path, backup_path)
 
+    def _extract_indentation(self, line: str) -> str:
+        """
+        Extract leading whitespace from a line.
+
+        Args:
+            line: Line to extract indentation from
+
+        Returns:
+            String containing leading whitespace (spaces/tabs)
+        """
+        indent = ""
+        for char in line:
+            if char in [' ', '\t']:
+                indent += char
+            else:
+                break
+        return indent
+
+    def _add_indent_level(self, base_indent: str) -> str:
+        """
+        Add one indentation level to base indent.
+
+        Detects whether project uses tabs or spaces and adds
+        appropriate increment.
+
+        Args:
+            base_indent: Base indentation string
+
+        Returns:
+            Base indent plus one level
+        """
+        if '\t' in base_indent:
+            return base_indent + '\t'
+        elif len(base_indent) >= 2:
+            indent_size = len(base_indent)
+            if indent_size % 4 == 0:
+                return base_indent + '    '
+            elif indent_size % 2 == 0:
+                return base_indent + '  '
+            else:
+                return base_indent + '    '
+        else:
+            return base_indent + '    '  # Default 4 spaces
+
     def _apply_change(self, content: str, line_number: int,
                      original_text: str, suggested_text: str,
                      task_type: str) -> str:
@@ -162,7 +216,8 @@ class Applier:
             return content
 
     def _replace_docstring(self, lines: List[str], line_number: int,
-                          original_text: str, suggested_text: str, marker_prefix: str) -> str:
+                          original_text: str, suggested_text: Union[ModuleDocstring, ClassDocstring, MethodDocstring, str],
+                          marker_prefix: str) -> str:
         """
         Replace or insert a docstring.
 
@@ -170,7 +225,7 @@ class Applier:
             lines: File lines (0-indexed array)
             line_number: EXTERNAL (1-indexed) line number where marker start is
             original_text: Original docstring (if any)
-            suggested_text: New docstring
+            suggested_text: Pydantic schema object or formatted string (for validate_* tasks)
             marker_prefix: Marker prefix (@llm-doc, @llm-class, or @llm-module)
 
         Returns:
@@ -188,7 +243,9 @@ class Applier:
 
         # Special handling for MODULE markers (@llm-module)
         if marker_prefix == '@llm-module':
-            return self._replace_module_docstring(lines, suggested_text)
+            marker_line_idx = line_number - 1
+            marker_indent = self._extract_indentation(lines[marker_line_idx])
+            return self._replace_module_docstring(lines, suggested_text, marker_indent)
 
         # Convert EXTERNAL (1-indexed) to INTERNAL (0-indexed)
         # line_number points to marker start (e.g., line 10 in editor = index 9)
@@ -218,37 +275,24 @@ class Applier:
         search_start = func_line_idx + 1
         docstring_start, docstring_end = find_docstring_location(lines, search_start)
 
-        # Get indentation from the function definition line
-        indent = ""
-        if func_line_idx < len(lines):
-            func_line_text = lines[func_line_idx]
-            for char in func_line_text:
-                if char in [' ', '\t']:
-                    indent += char
-                else:
-                    break
+        # Extract indentation from function/class definition line
+        func_indent = self._extract_indentation(lines[func_line_idx])
 
-            # Detect indentation style and add one level
-            if '\t' in indent:
-                # Project uses tabs
-                indent += '\t'
-            elif len(indent) >= 2:
-                # Project uses spaces - detect the increment size
-                # Common sizes: 2, 4, or 8 spaces
-                # Assume same size as current indent (or 4 if indent is unusual)
-                indent_size = len(indent)
-                if indent_size % 4 == 0:
-                    indent += '    '  # 4 spaces
-                elif indent_size % 2 == 0:
-                    indent += '  '  # 2 spaces
-                else:
-                    indent += '    '  # Default to 4 spaces
-            else:
-                # No indentation detected or single space - default to 4 spaces
-                indent += '    '
+        # Calculate docstring indentation (function indent + 1 level)
+        docstring_indent = self._add_indent_level(func_indent)
 
-        # Format new docstring
-        formatted_docstring = self._format_docstring(suggested_text, indent)
+        # Format based on type of suggested_text
+        if isinstance(suggested_text, ModuleDocstring):
+            formatted_docstring = format_module_docstring(suggested_text, docstring_indent)
+        elif isinstance(suggested_text, ClassDocstring):
+            formatted_docstring = format_class_docstring(suggested_text, docstring_indent)
+        elif isinstance(suggested_text, MethodDocstring):
+            formatted_docstring = format_method_docstring(suggested_text, docstring_indent)
+        elif isinstance(suggested_text, str):
+            # Already formatted (validate_* tasks) - need to add indentation
+            formatted_docstring = self._format_docstring(suggested_text, docstring_indent)
+        else:
+            raise ValueError(f"Unexpected type for suggested_text: {type(suggested_text)}")
 
         # Replace or insert
         if docstring_start is not None and docstring_end is not None:
@@ -382,18 +426,11 @@ class Applier:
             # Fallback: assume code is right after marker
             code_line_idx = marker_line_idx + 1
 
-        # Get indentation from the code line
-        indent = ""
-        if code_line_idx < len(lines):
-            code_line_text = lines[code_line_idx]
-            for char in code_line_text:
-                if char in [' ', '\t']:
-                    indent += char
-                else:
-                    break
+        # Extract indentation from code line (comments align with code)
+        code_indent = self._extract_indentation(lines[code_line_idx])
 
-        # Format new comment
-        formatted_comment = f"{indent}# {suggested_text.strip()}"
+        # Format new comment (no level addition - comments align with code)
+        formatted_comment = f"{code_indent}# {suggested_text.strip()}"
 
         # Replace existing comment or insert new one
         if existing_comment_idx is not None:
@@ -408,7 +445,9 @@ class Applier:
 
         return '\n'.join(lines)
 
-    def _replace_module_docstring(self, lines: List[str], suggested_text: str) -> str:
+    def _replace_module_docstring(self, lines: List[str],
+                                 suggested_text: Union[ModuleDocstring, str],
+                                 marker_indent: str = "") -> str:
         """
         Replace or insert module-level docstring at the top of the file.
 
@@ -417,14 +456,12 @@ class Applier:
 
         Args:
             lines: File lines (0-indexed array)
-            suggested_text: New module docstring
+            suggested_text: Pydantic schema object or formatted string (for validate_* tasks)
+            marker_indent: Indentation from marker line (usually no indentation)
 
         Returns:
             Modified content
         """
-        # Module docstrings are at the TOP of the file (no indentation)
-        indent = ""
-
         # Find the @llm-module-start marker (should be line 0)
         marker_start_idx = None
         for i, line in enumerate(lines):
@@ -463,8 +500,14 @@ class Applier:
             else:
                 break
 
-        # Format new docstring (module-level, no indentation)
-        formatted_docstring = self._format_docstring(suggested_text, indent)
+        # Format based on type of suggested_text
+        if isinstance(suggested_text, ModuleDocstring):
+            formatted_docstring = format_module_docstring(suggested_text, marker_indent)
+        elif isinstance(suggested_text, str):
+            # Already formatted (validate_* tasks) - need to add indentation
+            formatted_docstring = self._format_docstring(suggested_text, marker_indent)
+        else:
+            raise ValueError(f"Unexpected type for suggested_text: {type(suggested_text)}")
 
         # Replace or insert
         if docstring_start is not None and docstring_end is not None:

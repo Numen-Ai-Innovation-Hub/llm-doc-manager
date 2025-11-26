@@ -15,6 +15,15 @@ MARKER_TO_TASK_TYPE = {
     MarkerType.COMMENT: 'generate_comment'       # For code comments
 }
 
+# Mapping from marker types to validation task types
+# Used when existing documentation needs validation/improvement after code changes
+MARKER_TO_VALIDATE_TYPE = {
+    MarkerType.MODULE_DOC: 'validate_module',    # Validate existing module docstrings
+    MarkerType.DOCSTRING: 'validate_docstring',  # Validate existing method/function docstrings
+    MarkerType.CLASS_DOC: 'validate_class',      # Validate existing class docstrings
+    MarkerType.COMMENT: 'validate_comment'       # Validate existing comments
+}
+
 # String-based mapping for legacy compatibility
 # Used when marker_type comes as string value instead of enum
 MARKER_VALUE_TO_TASK_TYPE = {
