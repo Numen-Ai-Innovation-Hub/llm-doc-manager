@@ -429,16 +429,50 @@ class Applier:
         # Extract indentation from code line (comments align with code)
         code_indent = self._extract_indentation(lines[code_line_idx])
 
-        # Format new comment (no level addition - comments align with code)
-        formatted_comment = f"{code_indent}# {suggested_text.strip()}"
+        # Format new comment - handle multi-line text properly
+        # Step 1: Split into lines and clean each one
+        comment_lines = suggested_text.strip().split('\n')
+        formatted_lines = []
 
-        # Replace existing comment or insert new one
+        for line in comment_lines:
+            # Clean the line: remove existing # prefix if any, remove extra whitespace
+            clean_line = line.strip()
+
+            # Remove # prefix (handles both "# text" and "#text")
+            if clean_line.startswith('#'):
+                clean_line = clean_line[1:].lstrip()
+
+            # Skip empty lines
+            if not clean_line:
+                continue
+
+            # Add proper indentation and # prefix
+            formatted_lines.append(f"{code_indent}# {clean_line}")
+
+        # Step 2: Replace existing comment or insert new one
         if existing_comment_idx is not None:
-            # Replace existing comment
-            lines[existing_comment_idx] = formatted_comment
+            # REPLACE MODE: Remove ALL old comment lines, then insert new ones
+            # Find the range of consecutive comment lines to remove
+            comment_end_idx = existing_comment_idx
+
+            for i in range(existing_comment_idx + 1, len(lines)):
+                stripped = lines[i].strip()
+                # Continue if this is a comment line (but not a marker)
+                if stripped.startswith('#') and not stripped.startswith('# @llm-'):
+                    comment_end_idx = i
+                else:
+                    break
+
+            # Remove old comment lines (inclusive range)
+            del lines[existing_comment_idx:comment_end_idx + 1]
+
+            # Insert new comment lines at the same position
+            for j, formatted_line in enumerate(formatted_lines):
+                lines.insert(existing_comment_idx + j, formatted_line)
         else:
-            # Insert new comment above the code line
-            lines.insert(code_line_idx, formatted_comment)
+            # INSERT MODE: Insert new comment above the code line
+            for j, formatted_line in enumerate(formatted_lines):
+                lines.insert(code_line_idx + j, formatted_line)
 
         # NOTE: Markers are preserved in the code for hash-based tracking.
         # They will NOT be removed after documentation is applied.
