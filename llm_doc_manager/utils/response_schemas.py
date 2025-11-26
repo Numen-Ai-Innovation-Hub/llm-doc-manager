@@ -11,48 +11,8 @@ from pydantic import BaseModel, Field, field_validator
 
 
 # ============================================================================
-# Helper function for line wrapping
+# Helper functions for line wrapping with indentation normalization
 # ============================================================================
-
-def _wrap_text_at_79_chars(text: str) -> str:
-    """
-    Break text at 79 characters by splitting on whitespace.
-
-    Preserves all words, only adds line breaks at spaces.
-    Indents continuation lines with 8 spaces (for Google Style).
-
-    Args:
-        text: Text to wrap
-
-    Returns:
-        str: Text with lines wrapped at 79 characters
-    """
-    if len(text) <= 79:
-        return text
-
-    words = text.split()
-    lines = []
-    current_line = []
-    current_len = 0
-
-    for word in words:
-        word_len = len(word)
-        space_len = 1 if current_line else 0
-
-        if current_len + word_len + space_len > 79:
-            if current_line:
-                lines.append(' '.join(current_line))
-            current_line = [word]
-            current_len = word_len
-        else:
-            current_line.append(word)
-            current_len += word_len + space_len
-
-    if current_line:
-        lines.append(' '.join(current_line))
-
-    return '\n        '.join(lines)  # 8 spaces for continuation
-
 
 def _wrap_single_line(line: str, max_length: int = 79) -> list[str]:
     """
@@ -101,13 +61,15 @@ def _wrap_single_line(line: str, max_length: int = 79) -> list[str]:
 
 def _wrap_docstring_preserving_structure(text: str) -> str:
     """
-    Wrap docstring content preserving multi-line structure and indentation.
+    Wrap docstring content with normalized indentation.
 
-    Processes each line individually:
-    - Lines <= 79 chars: kept as-is
-    - Lines > 79 chars: wrapped with +4 space continuation indentation
-    - Blank lines: preserved
-    - Original indentation: preserved
+    Removes excessive indentation from continuation lines while preserving
+    intentional indentation (Args lists, code examples with 4+ spaces).
+
+    Processes text in three steps:
+    1. Detect minimum indentation across all non-empty lines
+    2. Normalize (dedent) all lines to remove excessive indentation
+    3. Apply wrapping to normalized lines
 
     This allows LLMs to focus on content while the validator handles formatting.
 
@@ -115,20 +77,41 @@ def _wrap_docstring_preserving_structure(text: str) -> str:
         text: Complete docstring content (may be multi-line)
 
     Returns:
-        Wrapped docstring with all lines <= 79 characters
+        Wrapped docstring with normalized indentation and all lines <= 79 chars
     """
     if not text:
         return text
 
     lines = text.split('\n')
-    result = []
 
+    # Step 1: Detect minimum indentation (excluding empty lines)
+    min_indent = float('inf')
     for line in lines:
+        if line.strip():  # Non-empty line
+            indent = len(line) - len(line.lstrip())
+            min_indent = min(min_indent, indent)
+
+    # If all lines are empty or min_indent is still inf, no normalization needed
+    if min_indent == float('inf'):
+        min_indent = 0
+
+    # Step 2: Normalize indentation - remove min_indent from all lines
+    normalized_lines = []
+    for line in lines:
+        if not line.strip():
+            # Empty line - keep as-is
+            normalized_lines.append(line)
+        else:
+            # Remove min_indent spaces from the beginning
+            dedented = line[min_indent:] if len(line) > min_indent else line.lstrip()
+            normalized_lines.append(dedented)
+
+    # Step 3: Apply wrapping to normalized lines
+    result = []
+    for line in normalized_lines:
         if not line or len(line) <= 79:
-            # Empty line or already compliant, keep as-is
             result.append(line)
         else:
-            # Line > 79 characters, wrap it preserving indentation
             wrapped_lines = _wrap_single_line(line, max_length=79)
             result.extend(wrapped_lines)
 
@@ -154,8 +137,8 @@ class ArgumentDoc(BaseModel):
     @field_validator('description')
     @classmethod
     def wrap_long_lines(cls, v: str) -> str:
-        """Break lines at 79 characters by splitting on whitespace."""
-        return _wrap_text_at_79_chars(v)
+        """Wrap lines at 79 characters with normalized indentation."""
+        return _wrap_docstring_preserving_structure(v)
 
 
 class ReturnDoc(BaseModel):
@@ -169,8 +152,8 @@ class ReturnDoc(BaseModel):
     @field_validator('description')
     @classmethod
     def wrap_long_lines(cls, v: str) -> str:
-        """Break lines at 79 characters by splitting on whitespace."""
-        return _wrap_text_at_79_chars(v)
+        """Wrap lines at 79 characters with normalized indentation."""
+        return _wrap_docstring_preserving_structure(v)
 
 
 class RaisesDoc(BaseModel):
@@ -187,8 +170,8 @@ class RaisesDoc(BaseModel):
     @field_validator('description')
     @classmethod
     def wrap_long_lines(cls, v: str) -> str:
-        """Break lines at 79 characters by splitting on whitespace."""
-        return _wrap_text_at_79_chars(v)
+        """Wrap lines at 79 characters with normalized indentation."""
+        return _wrap_docstring_preserving_structure(v)
 
 
 class AttributeDoc(BaseModel):
@@ -203,8 +186,8 @@ class AttributeDoc(BaseModel):
     @field_validator('description')
     @classmethod
     def wrap_long_lines(cls, v: str) -> str:
-        """Break lines at 79 characters by splitting on whitespace."""
-        return _wrap_text_at_79_chars(v)
+        """Wrap lines at 79 characters with normalized indentation."""
+        return _wrap_docstring_preserving_structure(v)
 
 
 # ============================================================================
@@ -245,10 +228,10 @@ class ModuleDocstring(BaseModel):
     @field_validator('summary', 'extended_description', 'notes')
     @classmethod
     def wrap_long_lines(cls, v: Optional[str]) -> Optional[str]:
-        """Break lines at 79 characters by splitting on whitespace."""
+        """Wrap lines at 79 characters with normalized indentation."""
         if v is None:
             return v
-        return _wrap_text_at_79_chars(v)
+        return _wrap_docstring_preserving_structure(v)
 
 
 class ClassDocstring(BaseModel):
@@ -288,10 +271,10 @@ class ClassDocstring(BaseModel):
     @field_validator('summary', 'extended_description', 'notes')
     @classmethod
     def wrap_long_lines(cls, v: Optional[str]) -> Optional[str]:
-        """Break lines at 79 characters by splitting on whitespace."""
+        """Wrap lines at 79 characters with normalized indentation."""
         if v is None:
             return v
-        return _wrap_text_at_79_chars(v)
+        return _wrap_docstring_preserving_structure(v)
 
 
 class MethodDocstring(BaseModel):
@@ -341,10 +324,10 @@ class MethodDocstring(BaseModel):
     @field_validator('summary', 'extended_description')
     @classmethod
     def wrap_long_lines(cls, v: Optional[str]) -> Optional[str]:
-        """Break lines at 79 characters by splitting on whitespace."""
+        """Wrap lines at 79 characters with normalized indentation."""
         if v is None:
             return v
-        return _wrap_text_at_79_chars(v)
+        return _wrap_docstring_preserving_structure(v)
 
 
 class CommentText(BaseModel):
@@ -364,8 +347,8 @@ class CommentText(BaseModel):
     @field_validator('comment')
     @classmethod
     def wrap_long_lines(cls, v: str) -> str:
-        """Break lines at 79 characters by splitting on whitespace."""
-        return _wrap_text_at_79_chars(v)
+        """Wrap lines at 79 characters with normalized indentation."""
+        return _wrap_docstring_preserving_structure(v)
 
 
 # ============================================================================
