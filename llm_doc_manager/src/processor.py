@@ -15,8 +15,33 @@ from .constants import TASK_PROCESSING_ORDER
 from ..utils.docstring_handler import extract_docstring
 from ..utils.logger_setup import get_logger
 from ..utils.llm_client import LLMClientFactory
+from ..utils.response_schemas import (
+    ModuleDocstring,
+    ClassDocstring,
+    MethodDocstring,
+    CommentText,
+    ValidationResult
+)
+from ..utils.docstring_formatter import (
+    format_module_docstring,
+    format_class_docstring,
+    format_method_docstring
+)
 
 logger = get_logger(__name__)
+
+
+# Mapping task_type -> Pydantic schema for Structured Outputs
+TASK_SCHEMAS = {
+    "generate_module": ModuleDocstring,
+    "generate_class": ClassDocstring,
+    "generate_docstring": MethodDocstring,
+    "generate_comment": CommentText,
+    "validate_module": ValidationResult,
+    "validate_class": ValidationResult,
+    "validate_docstring": ValidationResult,
+    "validate_comment": ValidationResult,
+}
 
 
 @dataclass
@@ -99,11 +124,14 @@ class Processor:
             # Generate prompt based on task type
             prompt = self._generate_prompt(task)
 
-            # Call LLM
-            response, tokens = self.llm_client.call(prompt)
+            # Get schema for this task type (for Structured Outputs)
+            schema = TASK_SCHEMAS.get(task.task_type)
 
-            # Parse response
-            suggestion = self._parse_response(response, task)
+            # Call LLM with structured schema
+            response, tokens = self.llm_client.call(prompt, json_schema=schema)
+
+            # Parse response and format as docstring/comment
+            suggestion = self._parse_and_format_response(response, task)
 
             # Save suggestion to database
             self.queue_manager.update_suggestion(task.id, suggestion)
@@ -263,51 +291,58 @@ class Processor:
         return docstring if docstring else ""
 
 
-    def _parse_response(self, response: str, task: DocTask) -> str:
+    def _parse_and_format_response(self, response: str, task: DocTask) -> str:
         """
-        Parse LLM response.
+        Parse structured LLM response and format as docstring/comment.
+
+        With Structured Outputs, the response is guaranteed to be valid JSON
+        matching the Pydantic schema for the task type. This method parses
+        the JSON and formats it into the final docstring/comment string.
 
         Args:
-            response: Raw LLM response
+            response: JSON string from LLM (structured output)
             task: Original task
 
         Returns:
-            Parsed suggestion
+            Formatted docstring/comment ready to inject
         """
-        # Try to parse as JSON first (for validation tasks and comment generation)
-        if task.task_type.startswith("validate_") or task.task_type in ["generate_comment"]:
-            try:
-                # Clean response - remove markdown code blocks if present
-                cleaned = response.strip()
+        try:
+            parsed_json = json.loads(response)
+            task_type = task.task_type
 
-                # Remove ```json and ``` markers
-                if cleaned.startswith('```json'):
-                    cleaned = cleaned[7:]  # Remove ```json
-                if cleaned.startswith('```'):
-                    cleaned = cleaned[3:]  # Remove ```
-                if cleaned.endswith('```'):
-                    cleaned = cleaned[:-3]  # Remove trailing ```
+            # GENERATE tasks - build formatted docstring
+            if task_type == "generate_module":
+                schema_obj = ModuleDocstring(**parsed_json)
+                return format_module_docstring(schema_obj)
 
-                cleaned = cleaned.strip()
+            elif task_type == "generate_class":
+                schema_obj = ClassDocstring(**parsed_json)
+                return format_class_docstring(schema_obj)
 
-                # Parse JSON
-                parsed = json.loads(cleaned)
+            elif task_type == "generate_docstring":
+                schema_obj = MethodDocstring(**parsed_json)
+                return format_method_docstring(schema_obj)
 
-                # Extract the appropriate field based on task type
-                if task.task_type == "validate_module" and "improved_docstring" in parsed:
-                    return parsed["improved_docstring"]
-                elif task.task_type == "validate_docstring" and "improved_docstring" in parsed:
-                    return parsed["improved_docstring"]
-                elif task.task_type == "validate_class" and "improved_docstring" in parsed:
-                    return parsed["improved_docstring"]
-                elif task.task_type in ["validate_comment", "generate_comment"] and "comment" in parsed:
-                    return parsed["comment"]
-                elif task.task_type == "validate_comment" and "improved_comment" in parsed:
-                    return parsed["improved_comment"]
+            elif task_type == "generate_comment":
+                schema_obj = CommentText(**parsed_json)
+                return schema_obj.comment
 
-            except (json.JSONDecodeError, KeyError, ValueError):
-                # If parsing fails, return full response
-                pass
+            # VALIDATE tasks - return improved version if available
+            elif task_type.startswith("validate_"):
+                validation = ValidationResult(**parsed_json)
 
-        # For generate tasks (docstring/class) or if JSON parsing fails, return as-is
-        return response.strip()
+                # If not valid and has improved version, return it
+                if not validation.is_valid and validation.improved_content:
+                    return validation.improved_content
+
+                # If valid or no improved version, return empty string
+                return ""
+
+            else:
+                logger.warning(f"Unknown task type: {task_type}")
+                return response
+
+        except (json.JSONDecodeError, KeyError, ValueError) as e:
+            logger.error(f"Error parsing structured response: {e}")
+            # In case of error, return raw response
+            return response.strip()

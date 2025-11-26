@@ -17,13 +17,8 @@ Line: {line_number}
 5. Focus on the purpose or result, not implementation details
 6. **LINE LENGTH**: Keep comment under 79 characters. If explanation is long, break into multiple logical sentences that can be wrapped naturally.
 
-## Output Format
-Provide your response in JSON format:
-```json
-{{
-  "comment": "Your generated comment text here"
-}}
-```
+## Output
+Your response will be automatically formatted. Generate only the comment text following the guidelines above.
 
 Examples of good comments:
 - "Calculate the total price including tax and discounts"

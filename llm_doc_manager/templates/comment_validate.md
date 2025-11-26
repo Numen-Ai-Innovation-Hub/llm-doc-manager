@@ -22,20 +22,11 @@ Line: {line_number}
 5. Does it accurately reflect the actual code behavior?
 6. **LINE LENGTH**: Is the comment under 79 characters? Long comments should be broken into multiple logical sentences.
 
-## Output Format
-Provide your response in JSON format:
-```json
-{{
-  "is_valid": true/false,
-  "issues": [
-    "List of specific issues found"
-  ],
-  "suggestions": [
-    "List of specific improvements"
-  ],
-  "improved_comment": "The improved comment text (if improvements are needed)"
-}}
-```
+## Output
+Your response will be automatically formatted as a validation report. Focus on:
+- Identifying issues with the current comment
+- Providing specific, actionable suggestions
+- Writing an improved version if needed (just the text, no # prefix)
 
-If the comment is perfect, set is_valid to true and leave issues/suggestions empty.
-If improvements are needed, provide the complete improved comment text (just the text, no # prefix).
+If the comment is perfect, indicate it's valid with no issues.
+If improvements are needed, provide the complete improved comment text.

@@ -47,20 +47,11 @@ The COMPLETE function implementation is provided below. You must validate the do
 9. Does the docstring match the actual implementation (not just the signature)?
 10. **LINE LENGTH**: Are lines kept under 79 characters? Long descriptions should be broken naturally at logical points (after commas, conjunctions, or complete thoughts).
 
-## Output Format
-Provide your response in JSON format:
-```json
-{{
-  "is_valid": true/false,
-  "issues": [
-    "List of specific issues found"
-  ],
-  "suggestions": [
-    "List of specific improvements"
-  ],
-  "improved_docstring": "The complete improved docstring (if improvements are needed)"
-}}
-```
+## Output
+Your response will be automatically formatted as a validation report. Focus on:
+- Identifying issues with the current docstring
+- Providing specific, actionable suggestions
+- Writing an improved version if needed
 
-If the docstring is perfect, set is_valid to true and leave issues/suggestions empty.
+If the docstring is perfect, indicate it's valid with no issues.
 If improvements are needed, provide the complete improved docstring content (without the triple quotes).

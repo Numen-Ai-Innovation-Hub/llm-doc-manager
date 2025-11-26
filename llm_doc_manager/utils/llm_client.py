@@ -6,8 +6,9 @@ client selection via Factory pattern.
 """
 
 from abc import ABC, abstractmethod
-from typing import Optional, Tuple
+from typing import Optional, Tuple, Type
 import logging
+from pydantic import BaseModel
 
 logger = logging.getLogger(__name__)
 
@@ -42,7 +43,8 @@ class BaseLLMClient(ABC):
         self,
         prompt: str,
         temperature: Optional[float] = None,
-        max_tokens: Optional[int] = None
+        max_tokens: Optional[int] = None,
+        json_schema: Optional[Type[BaseModel]] = None
     ) -> Tuple[str, int]:
         """
         Execute LLM call.
@@ -51,6 +53,7 @@ class BaseLLMClient(ABC):
             prompt: Texto do prompt
             temperature: Sobrescreve preset (opcional)
             max_tokens: Sobrescreve preset (opcional)
+            json_schema: Pydantic schema for structured outputs (OpenAI only)
 
         Returns:
             Tuple[str, int]: (resposta_texto, total_tokens)
@@ -75,20 +78,36 @@ class OpenAIClient(BaseLLMClient):
         self,
         prompt: str,
         temperature: Optional[float] = None,
-        max_tokens: Optional[int] = None
+        max_tokens: Optional[int] = None,
+        json_schema: Optional[Type[BaseModel]] = None
     ) -> Tuple[str, int]:
         temp = temperature if temperature is not None else self.temperature
         max_tok = max_tokens if max_tokens is not None else self.max_tokens
 
         try:
-            response = self.client.chat.completions.create(
-                model=self.model,
-                messages=[{"role": "user", "content": prompt}],
-                temperature=temp,
-                max_tokens=max_tok
-            )
-            tokens = response.usage.total_tokens
-            return response.choices[0].message.content, tokens
+            if json_schema:
+                # Use Structured Outputs with Pydantic schema
+                response = self.client.beta.chat.completions.parse(
+                    model=self.model,
+                    messages=[{"role": "user", "content": prompt}],
+                    temperature=temp,
+                    max_tokens=max_tok,
+                    response_format=json_schema
+                )
+                # Return as JSON string for compatibility
+                parsed_obj = response.choices[0].message.parsed
+                tokens = response.usage.total_tokens
+                return parsed_obj.model_dump_json(), tokens
+            else:
+                # Normal call (fallback)
+                response = self.client.chat.completions.create(
+                    model=self.model,
+                    messages=[{"role": "user", "content": prompt}],
+                    temperature=temp,
+                    max_tokens=max_tok
+                )
+                tokens = response.usage.total_tokens
+                return response.choices[0].message.content, tokens
         except Exception as e:
             logger.error(f"Erro ao chamar OpenAI API: {e}")
             raise
@@ -111,11 +130,13 @@ class AnthropicClient(BaseLLMClient):
         self,
         prompt: str,
         temperature: Optional[float] = None,
-        max_tokens: Optional[int] = None
+        max_tokens: Optional[int] = None,
+        json_schema: Optional[Type[BaseModel]] = None
     ) -> Tuple[str, int]:
         temp = temperature if temperature is not None else self.temperature
         max_tok = max_tokens if max_tokens is not None else self.max_tokens
 
+        # Note: Anthropic doesn't support Structured Outputs (json_schema ignored)
         try:
             response = self.client.messages.create(
                 model=self.model,
@@ -145,8 +166,10 @@ class OllamaClient(BaseLLMClient):
         self,
         prompt: str,
         temperature: Optional[float] = None,
-        max_tokens: Optional[int] = None
+        max_tokens: Optional[int] = None,
+        json_schema: Optional[Type[BaseModel]] = None
     ) -> Tuple[str, int]:
+        # Note: Ollama doesn't support Structured Outputs (json_schema ignored)
         # Ollama não reporta tokens
         try:
             response = self.client.chat(

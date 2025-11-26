@@ -38,21 +38,12 @@ Line: {line_number}
 6. **LINE LENGTH**: Are lines kept under 79 characters?
 7. **VERBOSITY CHECK**: Is the docstring overly verbose or unnecessarily detailed?
 
-## Output Format
-Provide your response in JSON format:
-```json
-{{
-  "is_valid": true/false,
-  "issues": [
-    "List of specific issues found (focus on verbosity, missing info, or incorrect info)"
-  ],
-  "suggestions": [
-    "List of specific improvements (prioritize making it more concise)"
-  ],
-  "improved_docstring": "The complete improved docstring (if improvements are needed)"
-}}
-```
+## Output
+Your response will be automatically formatted as a validation report. Focus on:
+- Identifying issues with the current docstring (verbosity, missing info, incorrect info)
+- Providing specific, actionable suggestions (prioritize making it concise)
+- Writing an improved version if needed
 
 **Priority**: If the docstring is verbose, simplify it to 2-3 sentences maximum.
-If the docstring is perfect, set is_valid to true and leave issues/suggestions empty.
+If the docstring is perfect, indicate it's valid with no issues.
 If improvements are needed, provide the complete improved docstring content (without the triple quotes).
