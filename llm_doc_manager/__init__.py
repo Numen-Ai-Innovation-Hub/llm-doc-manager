@@ -3,7 +3,7 @@
 Manages documentation for validating and updating docstrings and comments.
 
 This module provides tools for validating and updating docstrings and comments
-using Large Language Models. Key components include the `DocumentationManager`
+using Large Language Models. The key component is the `DocumentationManager`
 class, which facilitates the validation process. Use this module to enhance
 documentation practices by ensuring consistency and accuracy.
 

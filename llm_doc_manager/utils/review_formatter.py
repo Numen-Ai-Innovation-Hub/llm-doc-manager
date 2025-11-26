@@ -186,7 +186,7 @@ def format_validation_result_for_review(
     # Validation status: "Generate" or "Validate"
     status = "Generate" if validation.is_valid else "Validate"
     lines.append(f"Validation Status: {status}")
-    lines.append("")
+    lines.append("=" * 60)
 
     # Issues (rationale - what's wrong)
     if validation.issues:
@@ -267,7 +267,7 @@ def format_task_for_review(task) -> str:
 
             lines = []
             lines.append("Validation Status: Generate")
-            lines.append("")
+            lines.append("=" * 60)
 
             # Actual Content - empty for generate
             lines.append("Actual Content:")
@@ -295,7 +295,7 @@ def format_task_for_review(task) -> str:
 
             lines = []
             lines.append("Validation Status: Generate")
-            lines.append("")
+            lines.append("=" * 60)
 
             lines.append("Actual Content:")
             lines.append('"""')
@@ -320,7 +320,7 @@ def format_task_for_review(task) -> str:
 
             lines = []
             lines.append("Validation Status: Generate")
-            lines.append("")
+            lines.append("=" * 60)
 
             lines.append("Actual Content:")
             lines.append('"""')
@@ -344,7 +344,7 @@ def format_task_for_review(task) -> str:
             # Comments are plain text, not JSON
             lines = []
             lines.append("Validation Status: Generate")
-            lines.append("")
+            lines.append("=" * 60)
 
             lines.append("Actual Content:")
             lines.append('"""')
