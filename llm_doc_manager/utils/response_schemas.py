@@ -391,10 +391,11 @@ class ValidationResult(BaseModel):
         """
         Wrap docstring preserving multi-line structure.
 
-        Uses intelligent line-by-line wrapping that preserves:
-        - Multi-line structure (Args, Returns, etc. sections)
-        - Original indentation
-        - Blank lines
+        Uses intelligent line-by-line wrapping that:
+        - Preserves multi-line structure (Args, Returns, etc. sections)
+        - Normalizes indentation (removes excessive indentation from continuation lines)
+        - Preserves blank lines
+        - Preserves intentional indentation (4+ spaces for code blocks, Args lists)
 
         This allows LLMs to focus on content while validator ensures 79-char limit.
         """
