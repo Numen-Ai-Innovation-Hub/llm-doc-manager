@@ -1,8 +1,13 @@
+# @llm-module-start
 """
-AST-based code analysis for documentation generation.
+Analyzes Python code using Abstract Syntax Tree (AST) for documentation generation.
 
-Provides static analysis of Python modules to extract metadata,
-build dependency graphs, detect entry points, and calculate metrics.
+This module provides tools for static analysis of Python modules, enabling the extraction of metadata, building of dependency graphs, detection of entry points, and calculation of code metrics. Key components include the `ASTAnalyzer` class for performing the analysis, and the `ModuleInfo` and `ImportRelationship` data classes for structuring the extracted information. Use this module when you need to generate documentation or understand the structure and dependencies of a Python project.
+
+Typical usage example:
+from llm_doc_manager.utils.ast_analyzer import ASTAnalyzer
+analyzer = ASTAnalyzer()
+module_info = analyzer.extract_module_info('path/to/module.py')
 """
 
 import ast
@@ -11,10 +16,27 @@ from pathlib import Path
 from typing import Dict, List, Set, Tuple, Optional
 from dataclasses import dataclass, field
 
-
+# @llm-class-start
 @dataclass
 class ModuleInfo:
-    """Information extracted from a Python module."""
+    """
+    Stores information extracted from a Python module.
+
+    This class encapsulates details about a module, including its path, name,
+    docstring, and various components such as imports, classes, and functions.
+    It serves as a structured representation of the module's content for analysis.
+
+    Attributes:
+        module_path (str): The file path of the module.
+        module_name (str): The name of the module.
+        module_docstring (Optional[str]): The docstring of the module, if any.
+        imports_internal (List[str]): List of internal imports used in the module.
+        imports_external (List[str]): List of external imports used in the module.
+        classes (List[Dict]): List of classes defined in the module.
+        functions (List[Dict]): List of functions defined in the module.
+        exports (List[str]): List of exported names from the module.
+        lines_of_code (int): The total number of lines of code in the module.
+    """
     module_path: str
     module_name: str
     module_docstring: Optional[str] = None
@@ -24,78 +46,118 @@ class ModuleInfo:
     functions: List[Dict] = field(default_factory=list)
     exports: List[str] = field(default_factory=list)
     lines_of_code: int = 0
-    complexity: str = "unknown"
+# @llm-class-end
 
-
+# @llm-class-start
 @dataclass
 class ImportRelationship:
-    """Represents an import relationship between modules."""
+    """
+    Represents an import relationship between modules.
+
+    This class captures the details of how one module imports another, including the type of import and the specific names being imported. It is primarily used for analyzing dependencies between modules in a codebase.
+
+    Attributes:
+        from_module (str): The name of the module initiating the import.
+        to_module (str): The name of the module being imported.
+        import_type (str): The type of import, either 'import' or 'from_import'.
+        imported_names (List[str]): A list of names that are imported from the module.
+    """
     from_module: str
     to_module: str
     import_type: str  # 'import', 'from_import'
     imported_names: List[str] = field(default_factory=list)
+# @llm-class-end
 
-
+# @llm-class-start
 class ASTAnalyzer:
     """
-    Analyzes Python code using AST (Abstract Syntax Tree).
+    Analyzes Python code using AST (Abstract Syntax Tree). This class extracts module information, builds import graphs, detects entry points, and calculates code metrics for documentation generation. It is primarily responsible for providing insights into the structure and dependencies of Python projects.
 
-    Extracts module information, builds import graphs, detects entry points,
-    and calculates code metrics for documentation generation.
+    Attributes:
+        project_root (Path): Root directory of the project, defaults to current working directory.
     """
 
+    # @llm-doc-start
     def __init__(self, project_root: Optional[Path] = None):
         """
-        Initialize AST analyzer.
+        Initialize AST analyzer for a project directory.
+
+        This constructor sets up the Abstract Syntax Tree (AST) analyzer by defining the
+        root directory of the project. If no directory is provided, it defaults to the
+        current working directory.
 
         Args:
-            project_root: Root directory of the project.
-                         If None, uses current working directory.
-        """
-        self.project_root = project_root or Path.cwd()
-
-    def extract_module_info(self, file_path: str) -> ModuleInfo:
-        """
-        Extract comprehensive information from a Python module.
-
-        Args:
-            file_path: Path to the Python file
+            project_root (Optional[Path]): Root directory of the project. If None,
+            uses the current working directory.
 
         Returns:
-            ModuleInfo object with extracted data
+            None: This constructor does not return a value.
+
+        Raises:
+            None: This constructor does not raise any exceptions.
+        """
+        self.project_root = project_root or Path.cwd()
+    # @llm-doc-end
+
+    # @llm-doc-start
+    def extract_module_info(self, file_path: str) -> ModuleInfo:
+        """
+        Extracts comprehensive information from a Python module.
+
+        This function reads a Python file, parses its Abstract Syntax Tree (AST),
+        and extracts various details including the module's docstring, internal and
+        external imports, classes, functions, and explicit exports.
+
+        Args:
+            file_path (str): Path to the Python file.
+
+        Returns:
+            ModuleInfo: An object containing extracted data such as module path,
+            name, docstring, internal and external imports, classes, functions,
+            exports, and lines of code.
+
+        Raises:
+            Exception: If reading the file fails, it returns a ModuleInfo object
+            with zero lines of code.
+            SyntaxError: If the file contains invalid Python syntax, it returns a
+            ModuleInfo object with the number of lines in the content.
         """
         file_path = Path(file_path)
         module_name = file_path.stem
 
-        # Read file content
+        # @llm-comm-start
+        # Attempt to read the file content and handle any exceptions
         try:
             content = file_path.read_text(encoding='utf-8')
         except Exception as e:
-            # Return minimal info if file can't be read
             return ModuleInfo(
                 module_path=str(file_path),
                 module_name=module_name,
                 lines_of_code=0
             )
+        # @llm-comm-end
 
-        # Parse AST
+        # @llm-comm-start
+        # Attempt to parse the provided content into an AST and handle syntax errors
         try:
             tree = ast.parse(content, filename=str(file_path))
         except SyntaxError:
-            # Return minimal info if syntax error
             return ModuleInfo(
                 module_path=str(file_path),
                 module_name=module_name,
                 lines_of_code=len(content.split('\n'))
             )
+        # @llm-comm-end
 
-        # Extract module docstring
+        # @llm-comm-start
+        # Retrieve the module's docstring and initialize import lists
         module_docstring = ast.get_docstring(tree)
-
-        # Extract imports
         imports_internal = []
         imports_external = []
+        # @llm-comm-end
 
+        # @llm-comm-start
+        # Categorize imported modules as internal or external based on their names
         for node in ast.walk(tree):
             if isinstance(node, ast.Import):
                 for alias in node.names:
@@ -109,8 +171,10 @@ class ASTAnalyzer:
                     imports_internal.append(module)
                 else:
                     imports_external.append(module)
+        # @llm-comm-end
 
-        # Extract classes
+        # @llm-comm-start
+        # Collect information about classes defined in the AST tree
         classes = []
         for node in tree.body:
             if isinstance(node, ast.ClassDef):
@@ -121,8 +185,10 @@ class ASTAnalyzer:
                     'line_number': node.lineno
                 }
                 classes.append(class_info)
+        # @llm-comm-end
 
-        # Extract functions (module-level only)
+        # @llm-comm-start
+        # Collect module-level function details including name, docstring, and parameters
         functions = []
         for node in tree.body:
             if isinstance(node, ast.FunctionDef):
@@ -134,8 +200,10 @@ class ASTAnalyzer:
                     'is_async': isinstance(node, ast.AsyncFunctionDef)
                 }
                 functions.append(func_info)
+        # @llm-comm-end
 
-        # Extract __all__ (explicit exports)
+        # @llm-comm-start
+        # Collect the explicit exports defined in the __all__ variable
         exports = []
         for node in tree.body:
             if isinstance(node, ast.Assign):
@@ -146,18 +214,22 @@ class ASTAnalyzer:
                                 elt.s for elt in node.value.elts
                                 if isinstance(elt, ast.Str)
                             ]
+        # @llm-comm-end
 
-        # If no __all__, consider all public classes and functions as exports
+        # @llm-comm-start
+        # Gather all public class and function names as exports if none specified
         if not exports:
             exports = [c['name'] for c in classes if not c['name'].startswith('_')]
             exports += [f['name'] for f in functions if not f['name'].startswith('_')]
+        # @llm-comm-end
 
-        # Calculate LOC
+        # @llm-comm-start
+        # Count the number of lines in the provided content string
         lines_of_code = len(content.split('\n'))
+        # @llm-comm-end
 
-        # Calculate complexity (simple heuristic)
-        complexity = self._calculate_complexity(lines_of_code, len(classes), len(functions))
-
+        # @llm-comm-start
+        # Create and return a ModuleInfo object with module details and metadata
         return ModuleInfo(
             module_path=str(file_path),
             module_name=module_name,
@@ -168,35 +240,61 @@ class ASTAnalyzer:
             functions=functions,
             exports=exports,
             lines_of_code=lines_of_code,
-            complexity=complexity
         )
+        # @llm-comm-end
+    # @llm-doc-end
 
+    # @llm-doc-start
     def build_import_graph(self, project_root: Optional[Path] = None, restrict_to_files: Optional[List[str]] = None) -> List[ImportRelationship]:
         """
-        Build complete import graph for the project.
+        Builds a complete import graph for the project.
+
+        This function analyzes Python files in the specified project root directory
+        and constructs a list of import relationships between modules.
 
         Args:
-            project_root: Root directory to scan. If None, uses self.project_root
+            project_root (Optional[Path]): Root directory to scan. If None, uses
+            self.project_root.
+            restrict_to_files (Optional[List[str]]): List of specific files to
+            restrict the analysis to. If None, all Python files in the project
+            root are considered.
 
         Returns:
-            List of ImportRelationship objects
+            List[ImportRelationship]: A list of ImportRelationship objects that
+            represent the relationships between imported and importing modules.
+
+        Raises:
+            Exception: If an error occurs while reading a file or parsing its
+            content, the function catches the exception and continues with the
+            next file.
         """
+        # @llm-comm-start
+        # Set the project root and initialize an empty list for relationships
         project_root = project_root or self.project_root
         relationships = []
+        # @llm-comm-end
 
+        # @llm-comm-start
+        # Determine the list of Python files based on specified restrictions
         if restrict_to_files:
             python_files = [Path(f) if Path(f).is_absolute() else (project_root / f) for f in restrict_to_files]
         else:
             python_files = list(project_root.rglob('*.py'))
+        # @llm-comm-end
 
+        # @llm-comm-start
+        # Extract import relationships from Python files in the project
         for file_path in python_files:
             try:
+                # @llm-comm-start
+                # Read file content, parse it into an AST, and determine module path
                 content = file_path.read_text(encoding='utf-8')
                 tree = ast.parse(content, filename=str(file_path))
-
                 from_module = self._get_module_path(file_path, project_root)
+                # @llm-comm-end
 
-                # Extract imports
+                # @llm-comm-start
+                # Extract import relationships from the AST and store them in a list
                 for node in ast.walk(tree):
                     if isinstance(node, ast.Import):
                         for alias in node.names:
@@ -215,31 +313,48 @@ class ASTAnalyzer:
                             import_type='from_import',
                             imported_names=names
                         ))
+                # @llm-comm-end
             except Exception:
-                # Skip files with parsing errors
                 continue
-
         return relationships
+        # @llm-comm-end
+    # @llm-doc-end
 
+    # @llm-doc-start
     def detect_entry_points(self, project_root: Optional[Path] = None) -> Dict[str, str]:
         """
         Detect entry points in the project.
 
+        This function scans the specified project root directory for various entry
+        points, including `__main__.py`, CLI files, and entry points defined in
+        `setup.py`. It returns a dictionary mapping the type of entry point to
+        its corresponding file path.
+
         Args:
-            project_root: Root directory to scan
+            project_root (Optional[Path]): Root directory to scan. If not provided,
+            the function uses the instance's project root.
 
         Returns:
-            Dictionary mapping entry point type to file path
+            Dict[str, str]: Dictionary mapping entry point type to file path.
+
+        Raises:
+            Exception: If an error occurs while reading or parsing `setup.py`.
         """
+        # @llm-comm-start
+        # Set project root to the provided value or use the default project root
         project_root = project_root or self.project_root
         entry_points = {}
+        # @llm-comm-end
 
-        # Check for __main__.py
+        # @llm-comm-start
+        # Identify and store the path of __main__.py if it exists in the project
         main_file = project_root / '__main__.py'
         if main_file.exists():
             entry_points['main'] = str(main_file)
+        # @llm-comm-end
 
-        # Check for CLI entry points (files with cli, main, or app in name)
+        # @llm-comm-start
+        # Identify Python files serving as CLI entry points in the project
         for file_path in project_root.rglob('*.py'):
             name_lower = file_path.stem.lower()
             if name_lower in ['cli', 'main', 'app', '__main__']:
@@ -250,9 +365,13 @@ class ASTAnalyzer:
                         entry_points['main'] = str(file_path)
                 elif 'app' in name_lower:
                     entry_points['app'] = str(file_path)
+        # @llm-comm-end
 
         # Check for setup.py entry points
         setup_py = project_root / 'setup.py'
+
+        # @llm-comm-start        
+        # Extract entry_points from the setup() function in setup.py file
         if setup_py.exists():
             try:
                 content = setup_py.read_text(encoding='utf-8')
@@ -269,21 +388,36 @@ class ASTAnalyzer:
                                     break
             except Exception:
                 pass
+        # @llm-comm-end
 
         return entry_points
+    # @llm-doc-end
 
+    # @llm-doc-start
     def calculate_metrics(self, file_path: str) -> Dict[str, any]:
         """
         Calculate code metrics for a file.
 
+        This function analyzes a Python file to compute various metrics, including the
+        number of lines of code, functions, classes, and whether the file contains tests.
+
         Args:
-            file_path: Path to Python file
+            file_path (str): Path to the Python file to be analyzed.
 
         Returns:
-            Dictionary with metrics (LOC, functions, classes, complexity, etc.)
+            Dict[str, any]: A dictionary containing the metrics:
+            - 'lines_of_code': Number of lines in the file.
+            - 'functions': Number of function definitions found.
+            - 'classes': Number of class definitions found.
+            - 'has_tests': Boolean indicating if the file name suggests it contains tests.
+
+        Raises:
+            Exception: If reading the file or parsing its content fails.
         """
         file_path = Path(file_path)
 
+        # @llm-comm-start
+        # Read file content and parse it into an abstract syntax tree
         try:
             content = file_path.read_text(encoding='utf-8')
             tree = ast.parse(content)
@@ -292,38 +426,45 @@ class ASTAnalyzer:
                 'lines_of_code': 0,
                 'functions': 0,
                 'classes': 0,
-                'complexity': 'unknown',
                 'has_tests': False
             }
+        # @llm-comm-end
 
-        # Count elements
+        # @llm-comm-start
+        # Count the number of functions, classes, and lines of code in the tree
         num_functions = sum(1 for node in ast.walk(tree) if isinstance(node, ast.FunctionDef))
         num_classes = sum(1 for node in ast.walk(tree) if isinstance(node, ast.ClassDef))
         lines_of_code = len(content.split('\n'))
+        # @llm-comm-end
 
         # Check for tests
         has_tests = 'test' in file_path.name.lower() or 'tests' in str(file_path).lower()
-
-        # Calculate complexity
-        complexity = self._calculate_complexity(lines_of_code, num_classes, num_functions)
 
         return {
             'lines_of_code': lines_of_code,
             'functions': num_functions,
             'classes': num_classes,
-            'complexity': complexity,
             'has_tests': has_tests
         }
+    # @llm-doc-end
 
+    # @llm-doc-start
     def _is_internal_import(self, import_name: str) -> bool:
         """
-        Check if an import is internal to the project.
+        Checks if an import is internal to the project.
+
+        This function uses a simple heuristic to determine if the provided import
+        name is internal by checking if it starts with a dot or matches the project
+        structure.
 
         Args:
-            import_name: Import module name
+            import_name (str): Import module name to check.
 
         Returns:
-            True if internal, False if external
+            bool: True if the import is internal, False if it is external.
+
+        Raises:
+            None: This function does not raise any exceptions.
         """
         # Simple heuristic: starts with '.' or matches project structure
         if import_name.startswith('.'):
@@ -335,17 +476,25 @@ class ASTAnalyzer:
             return True
 
         return False
+    # @llm-doc-end
 
+    # @llm-doc-start
     def _get_module_path(self, file_path: Path, project_root: Path) -> str:
         """
         Convert file path to module path.
 
+        This function transforms a given file path into a module path relative to a specified project root. If the file path is not relative to the project root, it returns the stem of the file path.
+
         Args:
-            file_path: Path to Python file
-            project_root: Project root directory
+            file_path (Path): Path to the Python file to be converted.
+            project_root (Path): Root directory of the project used for relative pathing.
 
         Returns:
-            Module path (e.g., 'src.scanner')
+            str: Module path in dot notation (e.g., 'src.scanner') or the stem of the
+            file path if it cannot be converted.
+
+        Raises:
+            ValueError: When the file path is not relative to the project root.
         """
         try:
             relative = file_path.relative_to(project_root)
@@ -353,44 +502,6 @@ class ASTAnalyzer:
             return '.'.join(parts)
         except ValueError:
             return file_path.stem
-
-    def _calculate_complexity(self, loc: int, num_classes: int, num_functions: int) -> str:
-        """
-        Calculate complexity level based on LOC and structure.
-
-        Args:
-            loc: Lines of code
-            num_classes: Number of classes
-            num_functions: Number of functions
-
-        Returns:
-            Complexity level: 'low', 'medium', 'high', 'very_high'
-        """
-        # Simple heuristic
-        score = 0
-
-        if loc > 500:
-            score += 3
-        elif loc > 200:
-            score += 2
-        elif loc > 100:
-            score += 1
-
-        if num_classes > 5:
-            score += 2
-        elif num_classes > 2:
-            score += 1
-
-        if num_functions > 20:
-            score += 2
-        elif num_functions > 10:
-            score += 1
-
-        if score >= 6:
-            return 'very_high'
-        elif score >= 4:
-            return 'high'
-        elif score >= 2:
-            return 'medium'
-        else:
-            return 'low'
+    # @llm-doc-end
+# @llm-class-end
+# @llm-module-end

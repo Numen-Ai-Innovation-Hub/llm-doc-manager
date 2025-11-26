@@ -687,7 +687,7 @@ class DocsGenerator:
                     for func in module_info.functions
                 ],
                 "lines_of_code": module_info.lines_of_code,
-                "complexity": module_info.complexity
+                
             }
 
         # Write JSON
@@ -1083,7 +1083,6 @@ class DocsGenerator:
             "imports_external": ", ".join(module_info.imports_external) or "None",
             "exports": ", ".join(module_info.exports) or "None",
             "loc": str(module_info.lines_of_code),
-            "complexity": module_info.complexity,
             "has_tests": str(self._has_tests(module_path)),
             "depends_on": ", ".join(depends_on) or "None",
             "used_by": ", ".join(used_by) or "None",
@@ -1243,7 +1242,6 @@ class DocsGenerator:
             "functions": [func["name"] for func in module_info.functions],
             "exports": module_info.exports,
             "imports_count": len(module_info.imports_internal) + len(module_info.imports_external),
-            "complexity": module_info.complexity,
             "loc": module_info.lines_of_code
         }
 
@@ -1256,17 +1254,12 @@ class DocsGenerator:
         total_classes = sum(len(m.classes) for m in modules.values())
         total_functions = sum(len(m.functions) for m in modules.values())
 
-        complexity_counts = {"low": 0, "medium": 0, "high": 0, "very_high": 0}
-        for module in modules.values():
-            complexity_counts[module.complexity] += 1
-
         return {
             "total_modules": len(modules),
             "total_loc": total_loc,
             "total_classes": total_classes,
             "total_functions": total_functions,
             "avg_loc_per_module": total_loc // len(modules) if modules else 0,
-            "complexity_distribution": complexity_counts
         }
 
     def _has_tests(self, module_path: str) -> bool:

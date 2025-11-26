@@ -1,24 +1,19 @@
+# @llm-module-start
 """
-LLM Documentation Manager
+LLM Documentation Manager for validating and updating docstrings and comments.
 
-A tool for automatically validating, creating, and updating docstrings,
-code comments, and project documentation using Large Language Models.
+This module provides a tool for automatically validating, creating, and updating
+docstrings, code comments, and project documentation using Large Language Models.
+It is designed to streamline the documentation process, ensuring consistency and
+accuracy across your codebase. Users can leverage the main functionalities to
+enhance their documentation practices effectively.
+
+Typical usage example:
+from llm_doc_manager import DocumentationManager
+manager = DocumentationManager()
+manager.validate_docstrings()
 """
 
 __version__ = "0.1.0"
 __author__ = "AI Innovation Hub"
-
-from .src.scanner import Scanner
-from .src.queue import QueueManager, DocTask
-from .src.processor import Processor
-from .src.applier import Applier
-from .src.config import Config
-
-__all__ = [
-    "Scanner",
-    "QueueManager",
-    "DocTask",
-    "Processor",
-    "Applier",
-    "Config",
-]
+# @llm-module-end

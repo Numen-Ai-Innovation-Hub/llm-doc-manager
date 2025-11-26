@@ -19,7 +19,6 @@ Generate complete documentation for a Python module combining technical API refe
 
 ### Metrics
 - **Lines of Code**: {loc}
-- **Complexity**: {complexity}
 - **Has Tests**: {has_tests}
 
 ### Dependencies
@@ -46,7 +45,6 @@ exports: [list, of, exports]
 dependencies:
   internal: [list]
   external: [list]
-complexity: {complexity_level}
 lines_of_code: {number}
 last_updated: {iso_timestamp}
 source_hash: {hash}
@@ -205,7 +203,6 @@ YAML front matter at top of file (between `---` markers):
 - `module_path`: Relative path from project root
 - `module_name`: Module name (filename without .py)
 - `exports`: List of public classes/functions
-- `complexity`: One of [low, medium, high, very_high]
 - `lines_of_code`: Integer
 - `last_updated`: ISO 8601 timestamp
 - `source_hash`: SHA256 hash of source file
@@ -227,7 +224,6 @@ exports: [Scanner, ScanResult]
 dependencies:
   internal: [src.config, utils.marker_detector]
   external: [pathlib, typing]
-complexity: medium
 lines_of_code: 213
 last_updated: 2025-11-25T10:30:00Z
 source_hash: abc123def456
