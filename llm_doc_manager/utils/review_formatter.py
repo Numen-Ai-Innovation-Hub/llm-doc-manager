@@ -16,6 +16,7 @@ from .response_schemas import (
     MethodDocstring,
     ValidationResult,
 )
+from .docstring_handler import extract_docstring
 
 
 logger = logging.getLogger(__name__)
@@ -158,23 +159,27 @@ def format_method_docstring_for_review(schema: MethodDocstring) -> str:
     return '\n'.join(lines)
 
 
-def format_validation_result_for_review(validation: ValidationResult) -> str:
+def format_validation_result_for_review(
+    validation: ValidationResult,
+    current_content: Optional[str] = None
+) -> str:
     """
     Format ValidationResult for review display.
 
     Shows validation status, issues (rationale), suggestions (rationale),
-    and improved content. This provides the "why" behind the validation.
+    actual content (when validating), and improved content.
 
     Args:
         validation: ValidationResult Pydantic object
+        current_content: Original docstring being validated (optional)
 
     Returns:
         Formatted string for display
     """
     lines = []
 
-    # Validation status
-    status = "Valid" if validation.is_valid else "Invalid"
+    # Validation status: "Generate" or "Validate"
+    status = "Generate" if validation.is_valid else "Validate"
     lines.append(f"Validation Status: {status}")
     lines.append("")
 
@@ -195,6 +200,12 @@ def format_validation_result_for_review(validation: ValidationResult) -> str:
     else:
         lines.append(f"Suggestions: None")
     lines.append("")
+
+    # Actual Content (only when validating existing documentation)
+    if status == "Validate" and current_content:
+        lines.append(f"Actual Content:")
+        lines.append(current_content)
+        lines.append("")
 
     # Improved content
     if validation.improved_content:
@@ -248,7 +259,11 @@ def format_task_for_review(task) -> str:
             # After Phase 1 fix: suggestion is ValidationResult JSON
             try:
                 validation = ValidationResult.model_validate_json(task.suggestion)
-                return format_validation_result_for_review(validation)
+
+                # Extract current docstring from task context using utility function
+                current_content = extract_docstring(task.context) or ""
+
+                return format_validation_result_for_review(validation, current_content)
             except (json.JSONDecodeError, ValueError) as e:
                 # Fallback for legacy format (plain strings)
                 logger.warning(f"Legacy validate_* format detected for task {task.id}: {e}")

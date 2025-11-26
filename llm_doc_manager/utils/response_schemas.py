@@ -63,7 +63,7 @@ def _wrap_single_line(line: str, max_length: int = 79) -> list[str]:
         max_length: Maximum line length (default 79)
 
     Returns:
-        List of wrapped lines with preserved and continuation indentation
+        List of wrapped lines with preserved indentation (no extra indentation)
     """
     if len(line) <= max_length:
         return [line]
@@ -73,7 +73,7 @@ def _wrap_single_line(line: str, max_length: int = 79) -> list[str]:
     indent_str = line[:indent]
     content = line[indent:]
 
-    # Wrap content preserving indentation
+    # Wrap content preserving original indentation (no extra indent for continuation)
     words = content.split()
     lines = []
     current_line = []
@@ -82,28 +82,19 @@ def _wrap_single_line(line: str, max_length: int = 79) -> list[str]:
     for word in words:
         word_len = len(word)
         space_len = 1 if current_line else 0
-
-        # For continuation lines, add 4 extra spaces
-        continuation_indent = 4 if current_line else 0
-        total_len = current_len + continuation_indent + word_len + space_len
+        total_len = current_len + word_len + space_len
 
         if total_len > max_length and current_line:
-            # Line full, start new continuation line
+            # Line full, start new continuation line with same indentation
             lines.append(indent_str + ' '.join(current_line))
             current_line = [word]
-            current_len = indent + 4 + word_len
+            current_len = indent + word_len
         else:
             current_line.append(word)
-            if not lines:  # First line
-                current_len = indent + len(' '.join(current_line))
-            else:  # Continuation line
-                current_len = indent + 4 + len(' '.join(current_line))
+            current_len += word_len + space_len
 
     if current_line:
-        if lines:  # Continuation line
-            lines.append(indent_str + '    ' + ' '.join(current_line))
-        else:  # First (and only) line
-            lines.append(indent_str + ' '.join(current_line))
+        lines.append(indent_str + ' '.join(current_line))
 
     return lines
 
