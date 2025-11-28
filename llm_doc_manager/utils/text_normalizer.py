@@ -270,3 +270,128 @@ def format_comment_lines(text: str, indent: str) -> list[str]:
             formatted_lines.append(f"{indent}# {clean_line}")
 
     return formatted_lines
+
+
+def format_bullet_item(text: str, bullet_prefix: str = "  • ") -> list[str]:
+    """
+    Format a bullet list item for review display.
+
+    Used in review_formatter.py for displaying issues, suggestions,
+    args, returns, raises, and attributes to the user.
+
+    Ensures that when text wraps to multiple lines, continuation lines
+    are indented to align with the start of the text (after the bullet).
+
+    Args:
+        text: Item text (may contain newlines from wrap_and_normalize)
+        bullet_prefix: Bullet prefix with leading spaces (default "  • ")
+
+    Returns:
+        List of formatted lines with proper indentation
+
+    Example:
+        >>> text = "This is a long line\\nthat was wrapped"
+        >>> format_bullet_item(text, "  • ")
+        ["  • This is a long line", "    that was wrapped"]
+    """
+    lines = text.split('\n')
+    if not lines:
+        return []
+
+    # First line gets the bullet
+    formatted = [f"{bullet_prefix}{lines[0]}"]
+
+    # Continuation lines get indentation to align with text after bullet
+    # bullet_prefix is "  • " (4 chars), so continuation indent is "    " (4 spaces)
+    continuation_indent = " " * len(bullet_prefix)
+
+    for line in lines[1:]:
+        if line.strip():  # Skip empty lines
+            formatted.append(f"{continuation_indent}{line}")
+
+    return formatted
+
+
+def format_section_item(
+    text: str,
+    section_indent: str = "    ",
+    base_indent: str = ""
+) -> list[str]:
+    """
+    Format a Google Style docstring section item for code generation.
+
+    Used in docstring_formatter.py for formatting Args, Returns, Raises,
+    and Attributes sections in generated Python docstrings.
+
+    Ensures that when text wraps to multiple lines, continuation lines
+    maintain the same indentation as the first line (no extra indent).
+
+    Args:
+        text: Item text (e.g., "param (type): description")
+        section_indent: Indentation for section items (default "    ")
+        base_indent: Base docstring indentation (default "")
+
+    Returns:
+        List of formatted lines with proper continuation indentation
+
+    Example:
+        >>> text = "param (str): Long description\\nthat wraps"
+        >>> format_section_item(text, section_indent="    ")
+        ["    param (str): Long description",
+         "    that wraps"]
+    """
+    lines = text.split('\n')
+    if not lines:
+        return []
+
+    # First line with section indent
+    first_line = f"{base_indent}{section_indent}{lines[0]}"
+    formatted = [first_line]
+
+    # Continuation lines with SAME indent (no extra spaces)
+    continuation_indent = f"{base_indent}{section_indent}"
+
+    for line in lines[1:]:
+        if line.strip():  # Skip empty lines
+            formatted.append(f"{continuation_indent}{line}")
+
+    return formatted
+
+
+def format_comment_for_review(text: str) -> str:
+    """
+    Format comment text for review display with "# " prefix.
+
+    Used in review_formatter.py to display comments exactly as they
+    appear in code files (matching format_comment_lines output).
+
+    Each line gets "# " prefix with proper indentation for multi-line
+    comments. Empty input returns empty string (no triple quotes).
+
+    Args:
+        text: Normalized comment text (already cleaned, no # prefix)
+
+    Returns:
+        Formatted comment with "# " prefix on each line, or empty string
+
+    Example:
+        >>> text = "Create and return a ModuleInfo object"
+        >>> format_comment_for_review(text)
+        "# Create and return a ModuleInfo object"
+
+        >>> text = "Set project_root to default\\nif not provided"
+        >>> format_comment_for_review(text)
+        "# Set project_root to default\\n# if not provided"
+    """
+    if not text or not text.strip():
+        return ""
+
+    comment_lines = text.strip().split('\n')
+    formatted_lines = []
+
+    for line in comment_lines:
+        clean_line = line.strip()
+        if clean_line:  # Skip empty lines
+            formatted_lines.append(f"# {clean_line}")
+
+    return '\n'.join(formatted_lines)

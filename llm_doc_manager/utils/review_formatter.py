@@ -16,7 +16,12 @@ from .response_schemas import (
     MethodDocstring,
     ValidationResult,
 )
-from .text_normalizer import wrap_and_normalize, strip_triple_quotes
+from .text_normalizer import (
+    wrap_and_normalize,
+    strip_triple_quotes,
+    format_bullet_item,
+    format_comment_for_review,
+)
 from .docstring_handler import extract_docstring
 from .docstring_formatter import (
     format_module_docstring,
@@ -86,7 +91,8 @@ def format_class_docstring_for_review(schema: ClassDocstring) -> str:
     if schema.attributes:
         lines.append(f"Attributes:")
         for attr in schema.attributes:
-            lines.append(f"  • {attr.name} ({attr.type_hint}): {attr.description}")
+            bullet_text = f"{attr.name} ({attr.type_hint}): {attr.description}"
+            lines.extend(format_bullet_item(bullet_text))
     else:
         lines.append(f"Attributes: None")
     lines.append("")
@@ -133,14 +139,16 @@ def format_method_docstring_for_review(schema: MethodDocstring) -> str:
     if schema.args:
         lines.append(f"Args:")
         for arg in schema.args:
-            lines.append(f"  • {arg.name} ({arg.type_hint}): {arg.description}")
+            bullet_text = f"{arg.name} ({arg.type_hint}): {arg.description}"
+            lines.extend(format_bullet_item(bullet_text))
     else:
         lines.append(f"Args: None")
     lines.append("")
 
     if schema.returns:
         lines.append(f"Returns:")
-        lines.append(f"  • {schema.returns.type_hint}: {schema.returns.description}")
+        bullet_text = f"{schema.returns.type_hint}: {schema.returns.description}"
+        lines.extend(format_bullet_item(bullet_text))
     else:
         lines.append(f"Returns: None")
     lines.append("")
@@ -148,7 +156,8 @@ def format_method_docstring_for_review(schema: MethodDocstring) -> str:
     if schema.raises:
         lines.append(f"Raises:")
         for exc in schema.raises:
-            lines.append(f"  • {exc.exception_type}: {exc.description}")
+            bullet_text = f"{exc.exception_type}: {exc.description}"
+            lines.extend(format_bullet_item(bullet_text))
     else:
         lines.append(f"Raises: None")
     lines.append("")
@@ -167,7 +176,8 @@ def format_method_docstring_for_review(schema: MethodDocstring) -> str:
 
 def format_validation_result_for_review(
     validation: ValidationResult,
-    current_content: Optional[str] = None
+    current_content: Optional[str] = None,
+    is_comment: bool = False
 ) -> str:
     """
     Format ValidationResult for review display.
@@ -177,7 +187,8 @@ def format_validation_result_for_review(
 
     Args:
         validation: ValidationResult Pydantic object
-        current_content: Original docstring being validated (optional)
+        current_content: Original content being validated (optional)
+        is_comment: True if validating a comment (uses # prefix format)
 
     Returns:
         Formatted string for display
@@ -193,7 +204,7 @@ def format_validation_result_for_review(
     if validation.issues:
         lines.append(f"Issues Found:")
         for issue in validation.issues:
-            lines.append(f"  • {issue}")
+            lines.extend(format_bullet_item(issue))
     else:
         lines.append(f"Issues Found: None")
     lines.append("-" * 60)
@@ -202,34 +213,50 @@ def format_validation_result_for_review(
     if validation.suggestions:
         lines.append(f"Suggestions:")
         for suggestion in validation.suggestions:
-            lines.append(f"  • {suggestion}")
+            lines.extend(format_bullet_item(suggestion))
     else:
         lines.append(f"Suggestions: None")
     lines.append("-" * 60)
 
     # Actual Content (only when validating existing documentation)
-    if status == "Validate" and current_content:
+    if status == "Validate":
         lines.append(f"Actual Content:")
-        # Clean and normalize indentation
-        clean_content = strip_triple_quotes(current_content)
-        clean_content = wrap_and_normalize(clean_content)
 
-        lines.append('"""')
-        lines.append(clean_content)
-        lines.append('"""')
+        if is_comment:
+            # Format comments with "# " prefix (no triple quotes)
+            formatted_comment = format_comment_for_review(current_content)
+            lines.append(formatted_comment if formatted_comment else "#")
+        else:
+            # Format docstrings with triple quotes
+            clean_content = strip_triple_quotes(current_content) if current_content else ""
+            clean_content = wrap_and_normalize(clean_content)
+            lines.append('"""')
+            lines.append(clean_content)
+            lines.append('"""')
+
         lines.append("-" * 60)
 
     # Improved content
     if validation.improved_content:
         lines.append(f"Improved Content:")
-        # Clean and wrap in triple quotes
-        clean_content = strip_triple_quotes(validation.improved_content)
 
-        lines.append('"""')
-        lines.append(clean_content)
-        lines.append('"""')
+        if is_comment:
+            # Format comments with "# " prefix (no triple quotes)
+            formatted_comment = format_comment_for_review(validation.improved_content)
+            lines.append(formatted_comment if formatted_comment else "#")
+        else:
+            # Format docstrings with triple quotes
+            clean_content = strip_triple_quotes(validation.improved_content)
+            lines.append('"""')
+            lines.append(clean_content)
+            lines.append('"""')
     else:
-        lines.append(f"Improved Content: None")
+        # Show appropriate empty format based on content type
+        lines.append(f"Improved Content:")
+        if is_comment:
+            lines.append("#")
+        else:
+            lines.append("None")
 
     return '\n'.join(lines)
 
@@ -326,15 +353,15 @@ def format_task_for_review(task) -> str:
             lines.append("Validation Status: Generate")
             lines.append("=" * 60)
 
+            # Actual Content - empty for generate (show # to indicate empty comment)
             lines.append("Actual Content:")
-            lines.append('"""')
-            lines.append('"""')
+            lines.append("#")
             lines.append("-" * 60)
 
+            # Improved Content - format with "# " prefix
             lines.append("Improved Content:")
-            lines.append('"""')
-            lines.append(task.suggestion)
-            lines.append('"""')
+            formatted_comment = format_comment_for_review(task.suggestion)
+            lines.append(formatted_comment if formatted_comment else "#")
 
             return '\n'.join(lines)
 
@@ -343,10 +370,17 @@ def format_task_for_review(task) -> str:
             try:
                 validation = ValidationResult.model_validate_json(task.suggestion)
 
-                # Extract current docstring from task context using utility function
+                # Extract current content from task context
                 current_content = extract_docstring(task.context) or ""
 
-                return format_validation_result_for_review(validation, current_content)
+                # Determine if this is a comment validation
+                is_comment = task_type == "validate_comment"
+
+                return format_validation_result_for_review(
+                    validation,
+                    current_content,
+                    is_comment=is_comment
+                )
             except (json.JSONDecodeError, ValueError) as e:
                 # Fallback for legacy format (plain strings)
                 logger.warning(f"Legacy validate_* format detected for task {task.id}: {e}")

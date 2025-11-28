@@ -10,7 +10,7 @@ from llm_doc_manager.utils.response_schemas import (
     ClassDocstring,
     MethodDocstring,
 )
-from llm_doc_manager.utils.text_normalizer import add_indent
+from llm_doc_manager.utils.text_normalizer import add_indent, format_section_item
 
 
 def format_module_docstring(schema: ModuleDocstring, indent: str = "") -> str:
@@ -86,9 +86,8 @@ def format_class_docstring(schema: ClassDocstring, indent: str = "") -> str:
         lines.append('')
         lines.append(f'{indent}Attributes:')
         for attr in schema.attributes:
-            lines.append(
-                f'{indent}    {attr.name} ({attr.type_hint}): {attr.description}'
-            )
+            item_text = f'{attr.name} ({attr.type_hint}): {attr.description}'
+            lines.extend(format_section_item(item_text, base_indent=indent))
 
     # Example (optional)
     if schema.example:
@@ -139,26 +138,23 @@ def format_method_docstring(schema: MethodDocstring, indent: str = "") -> str:
         lines.append('')
         lines.append(f'{indent}Args:')
         for arg in schema.args:
-            lines.append(
-                f'{indent}    {arg.name} ({arg.type_hint}): {arg.description}'
-            )
+            item_text = f'{arg.name} ({arg.type_hint}): {arg.description}'
+            lines.extend(format_section_item(item_text, base_indent=indent))
 
     # Returns (optional)
     if schema.returns:
         lines.append('')
         lines.append(f'{indent}Returns:')
-        lines.append(
-            f'{indent}    {schema.returns.type_hint}: {schema.returns.description}'
-        )
+        item_text = f'{schema.returns.type_hint}: {schema.returns.description}'
+        lines.extend(format_section_item(item_text, base_indent=indent))
 
     # Raises (optional)
     if schema.raises:
         lines.append('')
         lines.append(f'{indent}Raises:')
         for exc in schema.raises:
-            lines.append(
-                f'{indent}    {exc.exception_type}: {exc.description}'
-            )
+            item_text = f'{exc.exception_type}: {exc.description}'
+            lines.extend(format_section_item(item_text, base_indent=indent))
 
     # Example (optional)
     if schema.example:
