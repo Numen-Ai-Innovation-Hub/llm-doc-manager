@@ -87,6 +87,7 @@ class OutputConfig:
     mode: str = "interactive"  # interactive, auto, pr
     backup: bool = True
     backup_dir: str = ".llm-doc-manager/backups"
+    docs_dir: str = ".llm-doc-manager/docs"  # Directory for generated documentation
 
 
 @dataclass

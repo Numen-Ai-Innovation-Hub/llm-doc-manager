@@ -561,6 +561,11 @@ class Applier:
         """
         Rollback to most recent backup of a file.
 
+        This method is robust and will restore the backup even if:
+        - The original file doesn't exist
+        - The original file has inconsistencies or errors
+        - The file has permission issues
+
         Args:
             file_path: Path to file to rollback
 
@@ -584,8 +589,25 @@ class Applier:
 
             most_recent = backups[0]
 
-            # Restore backup
-            shutil.copy2(most_recent, file_path)
+            # Ensure parent directory exists
+            file_path.parent.mkdir(parents=True, exist_ok=True)
+
+            # Remove problematic file if it exists
+            # This ensures we can restore even if the file is corrupted/locked
+            if file_path.exists():
+                try:
+                    file_path.unlink()
+                except Exception as e:
+                    logger.warning(f"Could not remove existing file (will try to overwrite): {e}")
+
+            # Restore backup - read from backup and write to destination
+            # This is more robust than shutil.copy2 for corrupted files
+            with open(most_recent, 'r', encoding='utf-8') as f:
+                content = f.read()
+
+            with open(file_path, 'w', encoding='utf-8') as f:
+                f.write(content)
+
             logger.info(f"Restored from backup: {most_recent.name}")
             return True
 

@@ -119,6 +119,15 @@ class Processor:
             # Generate prompt based on task type
             prompt = self._generate_prompt(task)
 
+            # Print prompt if debug mode is enabled
+            if getattr(self, 'debug', False):
+                print()
+                print("\n" + "="*80)
+                print(f"PROMPT FOR TASK {task.id} ({task.task_type}):")
+                print("="*80)
+                print(prompt)
+                print("="*80 + "\n")
+
             # Get schema for this task type (for Structured Outputs)
             schema = TASK_SCHEMAS.get(task.task_type)
 

@@ -282,7 +282,7 @@ class ASTAnalyzer:
     # @llm-doc-start
     def _is_internal_import(self, import_name: str) -> bool:
         if import_name.startswith('.'):
-            return True
+            return False
 
         project_name = self.project_root.name
         if import_name.startswith(project_name):

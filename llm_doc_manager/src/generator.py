@@ -75,7 +75,7 @@ class DocsGenerator:
         # Paths
         self.project_root = Path(config.project_root)
         self.analyzer = ASTAnalyzer(self.project_root)
-        self.docs_dir = self.project_root / "docs"
+        self.docs_dir = self.project_root / config.output.docs_dir
         self.module_dir = self.docs_dir / "module"
         self.templates_dir = Path(__file__).parent.parent / "templates"
 

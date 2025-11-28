@@ -182,6 +182,26 @@ class QueueManager:
         conn.commit()
         conn.close()
 
+    def update_task_error(self, task_id: int, error_message: Optional[str]):
+        """
+        Update task error message.
+
+        Args:
+            task_id: Task ID
+            error_message: Error message (None to clear)
+        """
+        conn = sqlite3.connect(self.db_path)
+        cursor = conn.cursor()
+
+        cursor.execute("""
+            UPDATE documentation_tasks
+            SET error_message = ?, updated_at = ?
+            WHERE id = ?
+        """, (error_message, datetime.now().isoformat(), task_id))
+
+        conn.commit()
+        conn.close()
+
     def get_stats(self) -> Dict[str, int]:
         """
         Get queue statistics.

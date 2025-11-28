@@ -396,7 +396,8 @@ def sync(path, force):
 
 @cli.command()
 @click.option('--limit', type=int, help='Maximum number of tasks to process')
-def process(limit):
+@click.option('--debug', is_flag=True, help='Print prompts before sending to LLM')
+def process(limit, debug):
     """Process pending documentation tasks with LLM."""
     try:
         # Load config
@@ -414,6 +415,10 @@ def process(limit):
         # Initialize components
         queue_manager = QueueManager()
         processor = Processor(config, queue_manager)
+
+        # Enable debug mode if requested
+        if debug:
+            processor.debug = True
 
         # Get pending tasks
         pending = queue_manager.get_pending_tasks(limit=limit)
@@ -452,6 +457,59 @@ def process(limit):
     except Exception as e:
         click.echo(f"❌ Error: {e}", err=True)
         traceback.print_exc()
+        sys.exit(1)
+
+
+@cli.command()
+@click.option('--task-id', type=int, help='Retry specific task by ID')
+def retry(task_id):
+    """Retry failed documentation tasks."""
+    try:
+        queue_manager = QueueManager()
+
+        # Get failed tasks
+        if task_id:
+            # Retry specific task
+            task = queue_manager.get_task(task_id)
+            if not task:
+                click.echo(f"❌ Task {task_id} not found")
+                sys.exit(1)
+
+            if task.status != TaskStatus.FAILED.value:
+                click.echo(f"❌ Task {task_id} is not failed (status: {task.status})")
+                sys.exit(1)
+
+            failed_tasks = [task]
+        else:
+            # Get all failed tasks
+            failed_tasks = queue_manager.get_tasks_by_status(TaskStatus.FAILED)
+
+        if not failed_tasks:
+            click.echo("No failed tasks found.")
+            return
+
+        # Show failed tasks and ask for confirmation (only if retrying all)
+        if not task_id:
+            click.echo(f"📋 Found {len(failed_tasks)} failed task(s):\n")
+            for i, task in enumerate(failed_tasks, 1):
+                click.echo(f"  {i}. [{task.id}] {task.file_path}:{task.line_number}")
+                click.echo(f"     Error: {task.error_message[:80] if task.error_message else 'Unknown'}...")
+                click.echo()
+
+            if not click.confirm(f"Retry {len(failed_tasks)} failed task(s)?"):
+                click.echo("Cancelled.")
+                return
+
+        # Reset failed tasks to pending
+        for task in failed_tasks:
+            queue_manager.update_task_status(task.id, TaskStatus.PENDING)
+            queue_manager.update_task_error(task.id, None)
+
+        click.echo(f"✓ Reset {len(failed_tasks)} task(s) to pending status")
+        click.echo(f"\nNext: Run 'llm-doc-manager process' to retry these tasks")
+
+    except Exception as e:
+        click.echo(f"❌ Error: {e}", err=True)
         sys.exit(1)
 
 
