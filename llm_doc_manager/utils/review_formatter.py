@@ -15,8 +15,8 @@ from .response_schemas import (
     ClassDocstring,
     MethodDocstring,
     ValidationResult,
-    _wrap_docstring_preserving_structure,
 )
+from .text_normalizer import wrap_and_normalize, strip_triple_quotes
 from .docstring_handler import extract_docstring
 from .docstring_formatter import (
     format_module_docstring,
@@ -211,15 +211,8 @@ def format_validation_result_for_review(
     if status == "Validate" and current_content:
         lines.append(f"Actual Content:")
         # Clean and normalize indentation
-        clean_content = current_content.strip()
-        if clean_content.startswith('"""') or clean_content.startswith("'''"):
-            clean_content = clean_content[3:]
-        if clean_content.endswith('"""') or clean_content.endswith("'''"):
-            clean_content = clean_content[:-3]
-        clean_content = clean_content.strip()
-
-        # Normalize indentation using same logic as Pydantic validators
-        clean_content = _wrap_docstring_preserving_structure(clean_content)
+        clean_content = strip_triple_quotes(current_content)
+        clean_content = wrap_and_normalize(clean_content)
 
         lines.append('"""')
         lines.append(clean_content)
@@ -230,12 +223,7 @@ def format_validation_result_for_review(
     if validation.improved_content:
         lines.append(f"Improved Content:")
         # Clean and wrap in triple quotes
-        clean_content = validation.improved_content.strip()
-        if clean_content.startswith('"""') or clean_content.startswith("'''"):
-            clean_content = clean_content[3:]
-        if clean_content.endswith('"""') or clean_content.endswith("'''"):
-            clean_content = clean_content[:-3]
-        clean_content = clean_content.strip()
+        clean_content = strip_triple_quotes(validation.improved_content)
 
         lines.append('"""')
         lines.append(clean_content)
@@ -284,12 +272,8 @@ def format_task_for_review(task) -> str:
             lines.append('"""')
             formatted = format_module_docstring(schema)
             # Remove the """  from formatted output (formatter adds them)
-            clean = formatted.strip()
-            if clean.startswith('"""'):
-                clean = clean[3:]
-            if clean.endswith('"""'):
-                clean = clean[:-3]
-            lines.append(clean.strip())
+            clean = strip_triple_quotes(formatted)
+            lines.append(clean)
             lines.append('"""')
 
             return '\n'.join(lines)
@@ -309,12 +293,8 @@ def format_task_for_review(task) -> str:
             lines.append("Improved Content:")
             lines.append('"""')
             formatted = format_class_docstring(schema)
-            clean = formatted.strip()
-            if clean.startswith('"""'):
-                clean = clean[3:]
-            if clean.endswith('"""'):
-                clean = clean[:-3]
-            lines.append(clean.strip())
+            clean = strip_triple_quotes(formatted)
+            lines.append(clean)
             lines.append('"""')
 
             return '\n'.join(lines)
@@ -334,12 +314,8 @@ def format_task_for_review(task) -> str:
             lines.append("Improved Content:")
             lines.append('"""')
             formatted = format_method_docstring(schema)
-            clean = formatted.strip()
-            if clean.startswith('"""'):
-                clean = clean[3:]
-            if clean.endswith('"""'):
-                clean = clean[:-3]
-            lines.append(clean.strip())
+            clean = strip_triple_quotes(formatted)
+            lines.append(clean)
             lines.append('"""')
 
             return '\n'.join(lines)

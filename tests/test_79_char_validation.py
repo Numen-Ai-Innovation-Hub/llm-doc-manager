@@ -37,9 +37,14 @@ def test_module_docstring_wrapping():
     print(f"\nOriginal extended_description length: {len(long_desc)} chars")
     print(f"Wrapped extended_description:\n{module.extended_description}")
 
-    # Verify wrapping occurred
-    assert "\n        " in module.summary, "Summary should be wrapped"
-    assert "\n        " in module.extended_description, "Extended description should be wrapped"
+    # Verify wrapping occurred (without extra indentation - normalized)
+    assert "\n" in module.summary, "Summary should be wrapped"
+    assert "\n" in module.extended_description, "Extended description should be wrapped"
+    # Verify all lines are <= 79 chars
+    for line in module.summary.split('\n'):
+        assert len(line) <= 79, f"Line exceeds 79 chars: '{line}' ({len(line)} chars)"
+    for line in module.extended_description.split('\n'):
+        assert len(line) <= 79, f"Line exceeds 79 chars: '{line}' ({len(line)} chars)"
     print("\n[PASS] ModuleDocstring wrapping works!")
 
 
@@ -64,8 +69,14 @@ def test_class_docstring_wrapping():
     print(f"\nWrapped extended_description:\n{cls.extended_description}")
     print(f"\nWrapped notes:\n{cls.notes}")
 
-    assert "\n        " in cls.summary, "Summary should be wrapped"
-    assert "\n        " in cls.notes, "Notes should be wrapped"
+    # Verify wrapping occurred (without extra indentation - normalized)
+    assert "\n" in cls.summary, "Summary should be wrapped"
+    assert "\n" in cls.notes, "Notes should be wrapped"
+    # Verify all lines are <= 79 chars
+    for line in cls.summary.split('\n'):
+        assert len(line) <= 79, f"Line exceeds 79 chars: '{line}' ({len(line)} chars)"
+    for line in cls.notes.split('\n'):
+        assert len(line) <= 79, f"Line exceeds 79 chars: '{line}' ({len(line)} chars)"
     print("\n[PASS] ClassDocstring wrapping works!")
 
 
@@ -109,12 +120,19 @@ def test_method_docstring_wrapping():
     print(f"\nWrapped returns description:\n{method.returns.description}")
     print(f"\nWrapped raises description:\n{method.raises[0].description}")
 
-    # Verify all wrapping
-    assert "\n        " in method.summary, "Summary should be wrapped"
-    assert "\n        " in method.extended_description, "Extended description should be wrapped"
-    assert "\n        " in method.args[0].description, "Arg description should be wrapped"
-    assert "\n        " in method.returns.description, "Returns description should be wrapped"
-    assert "\n        " in method.raises[0].description, "Raises description should be wrapped"
+    # Verify all wrapping (without extra indentation - normalized)
+    assert "\n" in method.summary, "Summary should be wrapped"
+    assert "\n" in method.extended_description, "Extended description should be wrapped"
+    assert "\n" in method.args[0].description, "Arg description should be wrapped"
+    assert "\n" in method.returns.description, "Returns description should be wrapped"
+    assert "\n" in method.raises[0].description, "Raises description should be wrapped"
+    # Verify all lines are <= 79 chars
+    for line in method.summary.split('\n'):
+        assert len(line) <= 79, f"Line exceeds 79 chars"
+    for line in method.extended_description.split('\n'):
+        assert len(line) <= 79, f"Line exceeds 79 chars"
+    for line in method.args[0].description.split('\n'):
+        assert len(line) <= 79, f"Line exceeds 79 chars"
 
     print("\n[PASS] MethodDocstring wrapping works!")
 
@@ -132,7 +150,10 @@ def test_comment_wrapping():
     print(f"\nOriginal comment length: {len(long_comment)} chars")
     print(f"Wrapped comment:\n{comment.comment}")
 
-    assert "\n        " in comment.comment, "Comment should be wrapped"
+    # Verify wrapping occurred (without extra indentation - normalized)
+    assert "\n" in comment.comment, "Comment should be wrapped"
+    for line in comment.comment.split('\n'):
+        assert len(line) <= 79, f"Line exceeds 79 chars"
     print("\n[PASS] CommentText wrapping works!")
 
 
@@ -183,7 +204,10 @@ def test_attribute_doc_wrapping():
     print(f"\nOriginal description length: {len(long_attr_desc)} chars")
     print(f"Wrapped description:\n{attr.description}")
 
-    assert "\n        " in attr.description, "Attribute description should be wrapped"
+    # Verify wrapping occurred (without extra indentation - normalized)
+    assert "\n" in attr.description, "Attribute description should be wrapped"
+    for line in attr.description.split('\n'):
+        assert len(line) <= 79, f"Line exceeds 79 chars"
     print("\n[PASS] AttributeDoc wrapping works!")
 
 

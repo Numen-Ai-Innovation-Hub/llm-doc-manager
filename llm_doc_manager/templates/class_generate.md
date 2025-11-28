@@ -27,7 +27,6 @@ Note (optional, only if critical):
 4. Include example ONLY if usage is non-obvious
 5. Use 4-space indentation
 6. **BE CONCISE**: No lengthy explanations about design patterns or system architecture
-7. **LINE LENGTH**: Keep lines under 79 characters
 
 ## Complete Class Code:
 File: {file_path}

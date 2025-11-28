@@ -52,24 +52,24 @@ def test_validation_result_field_naming():
         "is_valid": False,
         "issues": ["Missing Args section"],
         "suggestions": ["Add Args section"],
-        "improved_docstring": "def foo():\n    \"\"\"Test.\"\"\""
+        "improved_content": "def foo():\n    \"\"\"Test.\"\"\""
     }
 
     result = ValidationResult(**docstring_validation)
-    print(f"\nDocstring validation - improved_docstring: {result.improved_docstring[:30]}...")
+    print(f"\nDocstring validation - improved_content: {result.improved_content[:30]}...")
 
     # Test with comment validation (POTENTIAL ISSUE)
     comment_validation = {
         "is_valid": False,
         "issues": ["Too vague"],
         "suggestions": ["Be specific"],
-        "improved_docstring": "Calculate total with discount"  # Should this be improved_comment?
+        "improved_content": "Calculate total with discount"  # Should this be improved_comment?
     }
 
     result = ValidationResult(**comment_validation)
-    print(f"Comment validation - improved_docstring: {result.improved_docstring}")
+    print(f"Comment validation - improved_content: {result.improved_content}")
 
-    print("\n[WARNING] ValidationResult uses 'improved_docstring' for ALL validation types,")
+    print("\n[WARNING] ValidationResult uses 'improved_content' for ALL validation types,")
     print("          including validate_comment. Field name is semantically incorrect for comments.")
     print("          However, this is ACCEPTABLE because:")
     print("          1. The template was updated to use the same field name")
@@ -106,8 +106,8 @@ def test_processor_parsing_logic():
 
         elif task_type.startswith("validate_"):
             validation = ValidationResult(**parsed_json)
-            if not validation.is_valid and validation.improved_docstring:
-                return validation.improved_docstring
+            if not validation.is_valid and validation.improved_content:
+                return validation.improved_content
             return ""
 
         return "Unknown task type"
@@ -123,7 +123,7 @@ def test_processor_parsing_logic():
         "is_valid": False,
         "issues": ["Too vague"],
         "suggestions": ["Be specific"],
-        "improved_docstring": "Calculate total with discount"
+        "improved_content": "Calculate total with discount"
     })
     result = simulate_parse_and_format(validate_json, "validate_comment")
     print(f"validate_comment: {result}")
@@ -134,7 +134,7 @@ def test_processor_parsing_logic():
         "is_valid": False,
         "issues": ["Too verbose"],
         "suggestions": ["Simplify"],
-        "improved_docstring": "Simple module.\n\nDoes stuff."
+        "improved_content": "Simple module.\n\nDoes stuff."
     })
     result = simulate_parse_and_format(validate_module_json, "validate_module")
     print(f"validate_module: {result[:30]}...")
@@ -157,7 +157,7 @@ def test_for_duplicate_logic():
     print("[PASS] All schemas are referenced in TASK_SCHEMAS")
 
     print("\nChecking for template consistency...")
-    print("[PASS] All validate templates use consistent 'improved_docstring' field")
+    print("[PASS] All validate templates use consistent 'improved_content' field")
     print("[PASS] All generate templates removed JSON format instructions")
 
 
@@ -167,24 +167,24 @@ def test_edge_cases():
     print("TEST 5: Edge Cases")
     print("=" * 70)
 
-    # Test empty improved_docstring
+    # Test empty improved_content
     validation = ValidationResult(
         is_valid=True,
         issues=[],
         suggestions=[],
-        improved_docstring=None
+        improved_content=None
     )
-    print(f"\nValid docstring (no improvement needed): improved_docstring={validation.improved_docstring}")
-    assert validation.improved_docstring is None, "Should be None when valid"
+    print(f"\nValid docstring (no improvement needed): improved_content={validation.improved_content}")
+    assert validation.improved_content is None, "Should be None when valid"
 
-    # Test improved_docstring as empty string
+    # Test improved_content as empty string
     validation = ValidationResult(
         is_valid=False,
         issues=["Issue"],
         suggestions=["Fix"],
-        improved_docstring=""
+        improved_content=""
     )
-    print(f"Invalid but empty improvement: improved_docstring='{validation.improved_docstring}'")
+    print(f"Invalid but empty improvement: improved_content='{validation.improved_content}'")
 
     # Test optional fields
     method = MethodDocstring(
@@ -211,12 +211,12 @@ if __name__ == "__main__":
     print("=" * 70)
     print("\nFINDINGS:")
     print("1. [OK] All task types are properly mapped to schemas")
-    print("2. [OK] ValidationResult uses 'improved_docstring' for all validations (consistent)")
+    print("2. [OK] ValidationResult uses 'improved_content' for all validations (consistent)")
     print("3. [OK] Processor parsing logic handles all task types correctly")
     print("4. [OK] No duplicate or unused logic found")
     print("5. [OK] Edge cases are handled properly")
     print("\nSEMANTIC ISSUE (Minor):")
-    print("- ValidationResult.improved_docstring is used for comments too")
+    print("- ValidationResult.improved_content is used for comments too")
     print("- Field name is semantically incorrect but functionally correct")
     print("- This is ACCEPTABLE for consistency across validation tasks")
     print("\nCONCLUSION: Implementation is COMPLETE, CONSISTENT, and FUNCTIONAL")

@@ -9,113 +9,11 @@ from LLMs for documentation generation and validation tasks.
 from typing import Optional
 from pydantic import BaseModel, Field, field_validator
 
-
-# ============================================================================
-# Helper functions for line wrapping with indentation normalization
-# ============================================================================
-
-def _wrap_single_line(line: str, max_length: int = 79) -> list[str]:
-    """
-    Wrap a single line at max_length characters preserving its indentation.
-
-    Args:
-        line: Single line to wrap
-        max_length: Maximum line length (default 79)
-
-    Returns:
-        List of wrapped lines with preserved indentation (no extra indentation)
-    """
-    if len(line) <= max_length:
-        return [line]
-
-    # Detect original indentation
-    indent = len(line) - len(line.lstrip())
-    indent_str = line[:indent]
-    content = line[indent:]
-
-    # Wrap content preserving original indentation (no extra indent for continuation)
-    words = content.split()
-    lines = []
-    current_line = []
-    current_len = indent
-
-    for word in words:
-        word_len = len(word)
-        space_len = 1 if current_line else 0
-        total_len = current_len + word_len + space_len
-
-        if total_len > max_length and current_line:
-            # Line full, start new continuation line with same indentation
-            lines.append(indent_str + ' '.join(current_line))
-            current_line = [word]
-            current_len = indent + word_len
-        else:
-            current_line.append(word)
-            current_len += word_len + space_len
-
-    if current_line:
-        lines.append(indent_str + ' '.join(current_line))
-
-    return lines
-
-
-def _wrap_docstring_preserving_structure(text: str) -> str:
-    """
-    Wrap docstring content with normalized indentation.
-
-    Removes excessive indentation from continuation lines while preserving
-    intentional indentation (Args lists, code examples with 4+ spaces).
-
-    Processes text in three steps:
-    1. Detect minimum indentation across all non-empty lines
-    2. Normalize (dedent) all lines to remove excessive indentation
-    3. Apply wrapping to normalized lines
-
-    This allows LLMs to focus on content while the validator handles formatting.
-
-    Args:
-        text: Complete docstring content (may be multi-line)
-
-    Returns:
-        Wrapped docstring with normalized indentation and all lines <= 79 chars
-    """
-    if not text:
-        return text
-
-    lines = text.split('\n')
-
-    # Step 1: Detect minimum indentation (excluding empty lines)
-    min_indent = float('inf')
-    for line in lines:
-        if line.strip():  # Non-empty line
-            indent = len(line) - len(line.lstrip())
-            min_indent = min(min_indent, indent)
-
-    # If all lines are empty or min_indent is still inf, no normalization needed
-    if min_indent == float('inf'):
-        min_indent = 0
-
-    # Step 2: Normalize indentation - remove min_indent from all lines
-    normalized_lines = []
-    for line in lines:
-        if not line.strip():
-            # Empty line - keep as-is
-            normalized_lines.append(line)
-        else:
-            # Remove min_indent spaces from the beginning
-            dedented = line[min_indent:] if len(line) > min_indent else line.lstrip()
-            normalized_lines.append(dedented)
-
-    # Step 3: Apply wrapping to normalized lines
-    result = []
-    for line in normalized_lines:
-        if not line or len(line) <= 79:
-            result.append(line)
-        else:
-            wrapped_lines = _wrap_single_line(line, max_length=79)
-            result.extend(wrapped_lines)
-
-    return '\n'.join(result)
+from llm_doc_manager.utils.text_normalizer import (
+    wrap_and_normalize,
+    wrap_list_items,
+    clean_comment_prefix,
+)
 
 
 # ============================================================================
@@ -138,7 +36,7 @@ class ArgumentDoc(BaseModel):
     @classmethod
     def wrap_long_lines(cls, v: str) -> str:
         """Wrap lines at 79 characters with normalized indentation."""
-        return _wrap_docstring_preserving_structure(v)
+        return wrap_and_normalize(v)
 
 
 class ReturnDoc(BaseModel):
@@ -153,7 +51,7 @@ class ReturnDoc(BaseModel):
     @classmethod
     def wrap_long_lines(cls, v: str) -> str:
         """Wrap lines at 79 characters with normalized indentation."""
-        return _wrap_docstring_preserving_structure(v)
+        return wrap_and_normalize(v)
 
 
 class RaisesDoc(BaseModel):
@@ -171,7 +69,7 @@ class RaisesDoc(BaseModel):
     @classmethod
     def wrap_long_lines(cls, v: str) -> str:
         """Wrap lines at 79 characters with normalized indentation."""
-        return _wrap_docstring_preserving_structure(v)
+        return wrap_and_normalize(v)
 
 
 class AttributeDoc(BaseModel):
@@ -187,7 +85,7 @@ class AttributeDoc(BaseModel):
     @classmethod
     def wrap_long_lines(cls, v: str) -> str:
         """Wrap lines at 79 characters with normalized indentation."""
-        return _wrap_docstring_preserving_structure(v)
+        return wrap_and_normalize(v)
 
 
 # ============================================================================
@@ -225,13 +123,13 @@ class ModuleDocstring(BaseModel):
         )
     )
 
-    @field_validator('summary', 'extended_description', 'notes')
+    @field_validator('summary', 'extended_description', 'notes', 'typical_usage')
     @classmethod
     def wrap_long_lines(cls, v: Optional[str]) -> Optional[str]:
         """Wrap lines at 79 characters with normalized indentation."""
         if v is None:
             return v
-        return _wrap_docstring_preserving_structure(v)
+        return wrap_and_normalize(v)
 
 
 class ClassDocstring(BaseModel):
@@ -268,13 +166,13 @@ class ClassDocstring(BaseModel):
         description="Important usage notes or limitations (if critical)"
     )
 
-    @field_validator('summary', 'extended_description', 'notes')
+    @field_validator('summary', 'extended_description', 'notes', 'example')
     @classmethod
     def wrap_long_lines(cls, v: Optional[str]) -> Optional[str]:
         """Wrap lines at 79 characters with normalized indentation."""
         if v is None:
             return v
-        return _wrap_docstring_preserving_structure(v)
+        return wrap_and_normalize(v)
 
 
 class MethodDocstring(BaseModel):
@@ -321,13 +219,13 @@ class MethodDocstring(BaseModel):
         )
     )
 
-    @field_validator('summary', 'extended_description')
+    @field_validator('summary', 'extended_description', 'example')
     @classmethod
     def wrap_long_lines(cls, v: Optional[str]) -> Optional[str]:
         """Wrap lines at 79 characters with normalized indentation."""
         if v is None:
             return v
-        return _wrap_docstring_preserving_structure(v)
+        return wrap_and_normalize(v)
 
 
 class CommentText(BaseModel):
@@ -347,8 +245,11 @@ class CommentText(BaseModel):
     @field_validator('comment')
     @classmethod
     def wrap_long_lines(cls, v: str) -> str:
-        """Wrap lines at 79 characters with normalized indentation."""
-        return _wrap_docstring_preserving_structure(v)
+        """Clean and wrap comment at 79 characters with normalized indentation."""
+        # Remove # prefix if LLM included it
+        v = clean_comment_prefix(v)
+        # Wrap at 79 characters
+        return wrap_and_normalize(v)
 
 
 # ============================================================================
@@ -401,4 +302,10 @@ class ValidationResult(BaseModel):
         """
         if v is None:
             return v
-        return _wrap_docstring_preserving_structure(v)
+        return wrap_and_normalize(v)
+
+    @field_validator('issues', 'suggestions')
+    @classmethod
+    def wrap_list_items_validator(cls, v: list[str]) -> list[str]:
+        """Wrap each item in list at 79 characters."""
+        return wrap_list_items(v)

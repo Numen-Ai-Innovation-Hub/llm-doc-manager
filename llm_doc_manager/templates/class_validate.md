@@ -35,8 +35,7 @@ Line: {line_number}
 3. Are all public attributes documented briefly with correct types?
 4. Is indentation consistent (4 spaces)?
 5. Does it match the actual class implementation?
-6. **LINE LENGTH**: Are lines kept under 79 characters?
-7. **VERBOSITY CHECK**: Is the docstring overly verbose or unnecessarily detailed?
+6. **VERBOSITY CHECK**: Is the docstring overly verbose or unnecessarily detailed?
 
 ## Output
 Your response will be automatically formatted as a validation report. Focus on:

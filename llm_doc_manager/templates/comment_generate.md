@@ -15,7 +15,6 @@ Line: {line_number}
 3. Use clear, professional language
 4. Start the comment with a capital letter, no period at the end
 5. Focus on the purpose or result, not implementation details
-6. **LINE LENGTH**: Keep comment under 79 characters. If explanation is long, break into multiple logical sentences that can be wrapped naturally.
 
 ## Output
 Your response will be automatically formatted. Generate only the comment text following the guidelines above.

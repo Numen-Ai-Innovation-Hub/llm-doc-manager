@@ -39,8 +39,58 @@ from ..utils.docstring_formatter import (
     format_class_docstring,
     format_method_docstring
 )
+from ..utils.text_normalizer import (
+    format_google_style_docstring,
+    format_comment_lines
+)
 
 logger = get_logger(__name__)
+
+
+def extract_indentation(line: str) -> str:
+    """
+    Extract leading whitespace from a line.
+
+    Args:
+        line: Line to extract indentation from
+
+    Returns:
+        String containing leading whitespace (spaces/tabs)
+    """
+    indent = ""
+    for char in line:
+        if char in [' ', '\t']:
+            indent += char
+        else:
+            break
+    return indent
+
+
+def add_indent_level(base_indent: str) -> str:
+    """
+    Add one indentation level to base indent.
+
+    Detects whether project uses tabs or spaces and adds
+    appropriate increment.
+
+    Args:
+        base_indent: Base indentation string
+
+    Returns:
+        Base indent plus one level
+    """
+    if '\t' in base_indent:
+        return base_indent + '\t'
+    elif len(base_indent) >= 2:
+        indent_size = len(base_indent)
+        if indent_size % 4 == 0:
+            return base_indent + '    '
+        elif indent_size % 2 == 0:
+            return base_indent + '  '
+        else:
+            return base_indent + '    '
+    else:
+        return base_indent + '    '  # Default 4 spaces
 
 
 @dataclass
@@ -132,50 +182,6 @@ class Applier:
         # Copy file
         shutil.copy2(file_path, backup_path)
 
-    def _extract_indentation(self, line: str) -> str:
-        """
-        Extract leading whitespace from a line.
-
-        Args:
-            line: Line to extract indentation from
-
-        Returns:
-            String containing leading whitespace (spaces/tabs)
-        """
-        indent = ""
-        for char in line:
-            if char in [' ', '\t']:
-                indent += char
-            else:
-                break
-        return indent
-
-    def _add_indent_level(self, base_indent: str) -> str:
-        """
-        Add one indentation level to base indent.
-
-        Detects whether project uses tabs or spaces and adds
-        appropriate increment.
-
-        Args:
-            base_indent: Base indentation string
-
-        Returns:
-            Base indent plus one level
-        """
-        if '\t' in base_indent:
-            return base_indent + '\t'
-        elif len(base_indent) >= 2:
-            indent_size = len(base_indent)
-            if indent_size % 4 == 0:
-                return base_indent + '    '
-            elif indent_size % 2 == 0:
-                return base_indent + '  '
-            else:
-                return base_indent + '    '
-        else:
-            return base_indent + '    '  # Default 4 spaces
-
     def _apply_change(self, content: str, line_number: int,
                      original_text: str, suggested_text: str,
                      task_type: str) -> str:
@@ -244,7 +250,7 @@ class Applier:
         # Special handling for MODULE markers (@llm-module)
         if marker_prefix == '@llm-module':
             marker_line_idx = line_number - 1
-            marker_indent = self._extract_indentation(lines[marker_line_idx])
+            marker_indent = extract_indentation(lines[marker_line_idx])
             return self._replace_module_docstring(lines, suggested_text, marker_indent)
 
         # Convert EXTERNAL (1-indexed) to INTERNAL (0-indexed)
@@ -276,10 +282,10 @@ class Applier:
         docstring_start, docstring_end = find_docstring_location(lines, search_start)
 
         # Extract indentation from function/class definition line
-        func_indent = self._extract_indentation(lines[func_line_idx])
+        func_indent = extract_indentation(lines[func_line_idx])
 
         # Calculate docstring indentation (function indent + 1 level)
-        docstring_indent = self._add_indent_level(func_indent)
+        docstring_indent = add_indent_level(func_indent)
 
         # Format based on type of suggested_text
         if isinstance(suggested_text, ModuleDocstring):
@@ -290,7 +296,7 @@ class Applier:
             formatted_docstring = format_method_docstring(suggested_text, docstring_indent)
         elif isinstance(suggested_text, str):
             # Already formatted (validate_* tasks) - need to add indentation
-            formatted_docstring = self._format_docstring(suggested_text, docstring_indent)
+            formatted_docstring = format_google_style_docstring(suggested_text, docstring_indent)
         else:
             raise ValueError(f"Unexpected type for suggested_text: {type(suggested_text)}")
 
@@ -309,64 +315,6 @@ class Applier:
         # They will NOT be removed after documentation is applied.
 
         return '\n'.join(lines)
-
-    def _format_docstring(self, docstring: str, indent: str) -> str:
-        """
-        Format docstring with proper indentation and quotes.
-
-        This method applies DETERMINISTIC formatting regardless of LLM output format:
-        1. Removes ALL existing indentation
-        2. Detects Google Style sections (Args:, Returns:, Raises:, Example:)
-        3. Applies consistent indentation:
-           - Section headers (Args:, Returns:, etc.): base indent
-           - Section content: base indent + 4 spaces
-
-        Args:
-            docstring: Raw docstring text
-            indent: Base indentation string
-
-        Returns:
-            Formatted docstring with consistent indentation
-        """
-        # Remove existing quotes if present
-        docstring = docstring.strip().strip('"""').strip("'''").strip()
-
-        # Split into lines and strip ALL indentation
-        lines = [line.strip() for line in docstring.split('\n')]
-
-        # Google Style section markers
-        section_markers = ['Args:', 'Arguments:', 'Returns:', 'Return:', 'Yields:',
-                          'Raises:', 'Raise:', 'Note:', 'Notes:', 'Example:',
-                          'Examples:', 'Attributes:', 'See Also:', 'Warning:',
-                          'Warnings:', 'Todo:']
-
-        # Format with quotes and controlled indentation
-        formatted_lines = [f'{indent}"""']
-
-        in_section = False
-        for line in lines:
-            if not line:
-                # Empty line
-                formatted_lines.append('')
-                continue
-
-            # Check if this is a section header
-            is_section_header = any(line.startswith(marker) for marker in section_markers)
-
-            if is_section_header:
-                # Section header: base indent only
-                formatted_lines.append(f'{indent}{line}')
-                in_section = True
-            elif in_section:
-                # Content inside a section: base indent + 4 spaces
-                formatted_lines.append(f'{indent}    {line}')
-            else:
-                # Summary or extended description: base indent only
-                formatted_lines.append(f'{indent}{line}')
-
-        formatted_lines.append(f'{indent}"""')
-
-        return '\n'.join(formatted_lines)
 
     def _replace_comment(self, lines: List[str], line_number: int,
                         original_text: str, suggested_text: str) -> str:
@@ -427,29 +375,12 @@ class Applier:
             code_line_idx = marker_line_idx + 1
 
         # Extract indentation from code line (comments align with code)
-        code_indent = self._extract_indentation(lines[code_line_idx])
+        code_indent = extract_indentation(lines[code_line_idx])
 
-        # Format new comment - handle multi-line text properly
-        # Step 1: Split into lines and clean each one
-        comment_lines = suggested_text.strip().split('\n')
-        formatted_lines = []
+        # Format comment using centralized text normalizer function
+        formatted_lines = format_comment_lines(suggested_text, code_indent)
 
-        for line in comment_lines:
-            # Clean the line: remove existing # prefix if any, remove extra whitespace
-            clean_line = line.strip()
-
-            # Remove # prefix (handles both "# text" and "#text")
-            if clean_line.startswith('#'):
-                clean_line = clean_line[1:].lstrip()
-
-            # Skip empty lines
-            if not clean_line:
-                continue
-
-            # Add proper indentation and # prefix
-            formatted_lines.append(f"{code_indent}# {clean_line}")
-
-        # Step 2: Replace existing comment or insert new one
+        # Replace existing comment or insert new one
         if existing_comment_idx is not None:
             # REPLACE MODE: Remove ALL old comment lines, then insert new ones
             # Find the range of consecutive comment lines to remove
@@ -539,7 +470,7 @@ class Applier:
             formatted_docstring = format_module_docstring(suggested_text, marker_indent)
         elif isinstance(suggested_text, str):
             # Already formatted (validate_* tasks) - need to add indentation
-            formatted_docstring = self._format_docstring(suggested_text, marker_indent)
+            formatted_docstring = format_google_style_docstring(suggested_text, marker_indent)
         else:
             raise ValueError(f"Unexpected type for suggested_text: {type(suggested_text)}")
 

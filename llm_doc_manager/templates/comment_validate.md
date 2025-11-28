@@ -20,7 +20,6 @@ Line: {line_number}
 3. Does it avoid explaining HOW (implementation details)?
 4. Is it written in clear, professional language?
 5. Does it accurately reflect the actual code behavior?
-6. **LINE LENGTH**: Is the comment under 79 characters? Long comments should be broken into multiple logical sentences.
 
 ## Output
 Your response will be automatically formatted as a validation report. Focus on:

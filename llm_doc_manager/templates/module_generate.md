@@ -24,7 +24,6 @@ Note (optional, only if critical):
 4. Include typical usage if the module has a clear entry point
 5. Use 4-space indentation
 6. **BE CONCISE**: Focus on what the module provides, not implementation details
-7. **LINE LENGTH**: Keep lines under 79 characters
 
 ## Module Context:
 

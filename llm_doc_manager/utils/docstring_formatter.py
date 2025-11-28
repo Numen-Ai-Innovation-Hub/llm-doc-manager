@@ -10,20 +10,7 @@ from llm_doc_manager.utils.response_schemas import (
     ClassDocstring,
     MethodDocstring,
 )
-
-
-def _indent_lines(text: str, indent: str) -> list[str]:
-    """
-    Add indent prefix to each line of multi-line text.
-
-    Args:
-        text: Multi-line text to indent
-        indent: Indentation string to prepend to each line
-
-    Returns:
-        List of indented lines (empty lines remain empty)
-    """
-    return [f'{indent}{line}' if line.strip() else '' for line in text.split('\n')]
+from llm_doc_manager.utils.text_normalizer import add_indent
 
 
 def format_module_docstring(schema: ModuleDocstring, indent: str = "") -> str:
@@ -43,11 +30,11 @@ def format_module_docstring(schema: ModuleDocstring, indent: str = "") -> str:
     lines.append(f'{indent}"""')
 
     # Summary (required)
-    lines.extend(_indent_lines(schema.summary, indent))
+    lines.extend(add_indent(schema.summary, indent))
     lines.append('')
 
     # Extended description (required)
-    lines.extend(_indent_lines(schema.extended_description, indent))
+    lines.extend(add_indent(schema.extended_description, indent))
 
     # Typical usage (optional)
     if schema.typical_usage:
@@ -88,11 +75,11 @@ def format_class_docstring(schema: ClassDocstring, indent: str = "") -> str:
     lines.append(f'{indent}"""')
 
     # Summary (required)
-    lines.extend(_indent_lines(schema.summary, indent))
+    lines.extend(add_indent(schema.summary, indent))
     lines.append('')
 
     # Extended description (required)
-    lines.extend(_indent_lines(schema.extended_description, indent))
+    lines.extend(add_indent(schema.extended_description, indent))
 
     # Attributes (optional, but common)
     if schema.attributes:
@@ -140,12 +127,12 @@ def format_method_docstring(schema: MethodDocstring, indent: str = "") -> str:
     lines.append(f'{indent}"""')
 
     # Summary (required)
-    lines.extend(_indent_lines(schema.summary, indent))
+    lines.extend(add_indent(schema.summary, indent))
 
     # Extended description (optional)
     if schema.extended_description:
         lines.append('')
-        lines.extend(_indent_lines(schema.extended_description, indent))
+        lines.extend(add_indent(schema.extended_description, indent))
 
     # Args (optional, but very common)
     if schema.args:

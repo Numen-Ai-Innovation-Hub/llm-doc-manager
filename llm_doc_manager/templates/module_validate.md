@@ -36,10 +36,9 @@ Analyze the complete module code to verify the docstring:
 4. Is typical usage included if relevant and accurate to the code?
 5. Is indentation consistent (4 spaces)?
 6. Does it accurately reflect what the module provides?
-7. **LINE LENGTH**: Are lines kept under 79 characters?
-8. **VERBOSITY CHECK**: Is the docstring overly verbose or unnecessarily detailed?
-9. **IMPLEMENTATION DETAILS**: Does it avoid explaining internal implementation?
-10. **ACCURACY**: Does it match the actual imports/exports in the code?
+7. **VERBOSITY CHECK**: Is the docstring overly verbose or unnecessarily detailed?
+8. **IMPLEMENTATION DETAILS**: Does it avoid explaining internal implementation?
+9. **ACCURACY**: Does it match the actual imports/exports in the code?
 
 ## Output
 Your response will be automatically formatted as a validation report. Focus on:
